@@ -13,217 +13,228 @@ import zipfile
 from pathlib import Path
 
 class BellScheduleEditor:
-    """Диалоговое окно для редактирования расписания звонков"""
-    def __init__(self, parent, current_schedule_str):
-        self.parent = parent
-        self.result = None  # Будет содержать итоговую строку расписания
-        self.slots = self._parse_schedule_string(current_schedule_str)
+    """Класс для редактирования расписания звонков"""
+    def __init__(self, parent, current_schedule):
+        self.parent = parent  # Родительское окно (настройки)
+        self.current_schedule = current_schedule  # Текущее расписание звонков как строка
+        self.result = None  # Результат (новое расписание) после сохранения
         
-        self.dialog = tk.Toplevel(parent)
+        # Создание диалогового окна
+        self.dialog = tk.Toplevel(self.parent)
         self.dialog.title("Редактор расписания звонков")
         self.dialog.geometry("500x400")
-        self.dialog.transient(parent)
+        self.dialog.transient(self.parent)
         self.dialog.grab_set()
-        self.dialog.resizable(False, False)
-        
-        self.create_widgets()
-        
-    def _parse_schedule_string(self, schedule_str):
-        """Преобразует строку расписания в список кортежей (начало, конец)"""
-        if not schedule_str:
-            return []
-        try:
-            slots = []
-            for slot_str in schedule_str.split(','):
-                start, end = slot_str.strip().split('-')
-                slots.append((start.strip(), end.strip()))
-            return slots
-        except Exception:
-            # В случае ошибки возвращаем стандартное расписание
-            return [("8:00", "8:45"), ("8:55", "9:40"), ("9:50", "10:35"), 
-                    ("10:45", "11:30"), ("11:40", "12:25"), ("12:35", "13:20")]
-    
-    def _format_schedule_string(self):
-        """Преобразует список слотов в строку для сохранения"""
-        return ','.join([f"{start}-{end}" for start, end in self.slots])
-    
-    def create_widgets(self):
+
+        # Центрирование окна
+        self.dialog.update_idletasks()
+        x = (self.dialog.winfo_screenwidth() // 2) - (self.dialog.winfo_width() // 2)
+        y = (self.dialog.winfo_screenheight() // 2) - (self.dialog.winfo_height() // 2)
+        self.dialog.geometry(f"+{x}+{y}")
+
         # Основной фрейм
-        main_frame = ttk.Frame(self.dialog, padding=10)
+        main_frame = ttk.Frame(self.dialog, padding="10")
         main_frame.pack(fill=tk.BOTH, expand=True)
-        
+
         # Заголовок
-        ttk.Label(main_frame, text="Уроки:", font=('Segoe UI', 10, 'bold')).pack(anchor=tk.W, pady=(0, 5))
-        
-        # Фрейм для списка слотов с прокруткой
-        slots_frame = ttk.Frame(main_frame)
-        slots_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
-        
-        # Создаем Treeview для отображения слотов
+        title_label = ttk.Label(main_frame, text="Уроки:", font=('Segoe UI', 10, 'bold'))
+        title_label.grid(row=0, column=0, sticky=tk.W, pady=(0, 10))
+
+        # Таблица для отображения расписания звонков
         columns = ('№', 'Начало', 'Конец')
-        self.tree = ttk.Treeview(slots_frame, columns=columns, show='headings', height=10)
-        self.tree.heading('№', text='№')
-        self.tree.heading('Начало', text='Начало')
-        self.tree.heading('Конец', text='Конец')
-        self.tree.column('№', width=40, anchor='center')
-        self.tree.column('Начало', width=100, anchor='center')
-        self.tree.column('Конец', width=100, anchor='center')
+        self.tree = ttk.Treeview(main_frame, columns=columns, show='headings', height=10)
+        
+        # Настройка заголовков столбцов
+        for col in columns:
+            self.tree.heading(col, text=col)
+            self.tree.column(col, width=80, anchor=tk.CENTER)
         
         # Прокрутка
-        scrollbar = ttk.Scrollbar(slots_frame, orient=tk.VERTICAL, command=self.tree.yview)
+        scrollbar = ttk.Scrollbar(main_frame, orient=tk.VERTICAL, command=self.tree.yview)
         self.tree.configure(yscrollcommand=scrollbar.set)
-        
-        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        
+        self.tree.grid(row=1, column=0, sticky=tk.NSEW, padx=(0, 10))
+        scrollbar.grid(row=1, column=1, sticky=tk.NS, padx=(0, 10))
+
         # Кнопки управления
-        btn_frame = ttk.Frame(main_frame)
-        btn_frame.pack(fill=tk.X, pady=(10, 0))
-        
-        ttk.Button(btn_frame, text="➕ Добавить", command=self.add_slot).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(btn_frame, text="✏️ Редактировать", command=self.edit_slot).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(btn_frame, text="🗑️ Удалить", command=self.delete_slot).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(btn_frame, text="⬆️ Вверх", command=self.move_up).pack(side=tk.LEFT, padx=(20, 5))
-        ttk.Button(btn_frame, text="⬇️ Вниз", command=self.move_down).pack(side=tk.LEFT)
-        
-        # Кнопки ОК/Отмена
-        action_frame = ttk.Frame(main_frame)
-        action_frame.pack(fill=tk.X, pady=(10, 0))
-        
-        ttk.Button(action_frame, text="Отмена", command=self.dialog.destroy).pack(side=tk.RIGHT, padx=(5, 0))
-        ttk.Button(action_frame, text="ОК", command=self.save_and_close).pack(side=tk.RIGHT)
-        
-        # Загружаем данные в таблицу
-        self.load_slots_to_tree()
-    
-    def load_slots_to_tree(self):
-        """Загружает список слотов в Treeview"""
-        for item in self.tree.get_children():
-            self.tree.delete(item)
-        
-        for i, (start, end) in enumerate(self.slots, 1):
-            self.tree.insert('', tk.END, values=(i, start, end))
-    
-    def add_slot(self):
-        """Добавить новый слот"""
-        self._open_slot_editor("Добавить слот")
-    
-    def edit_slot(self):
-        """Редактировать выбранный слот"""
-        selected = self.tree.selection()
-        if not selected:
-            messagebox.showinfo("Информация", "Выберите слот для редактирования")
+        buttons_frame = ttk.Frame(main_frame)
+        buttons_frame.grid(row=2, column=0, columnspan=2, pady=(10, 0), sticky=tk.E)
+
+        # Кнопка "Добавить"
+        add_btn = ttk.Button(buttons_frame, text="➕ Добавить", command=self.add_interval)
+        add_btn.pack(side=tk.LEFT, padx=(0, 5))
+
+        # Кнопка "Редактировать"
+        edit_btn = ttk.Button(buttons_frame, text="✏️ Редактировать", command=self.edit_interval)
+        edit_btn.pack(side=tk.LEFT, padx=(0, 5))
+
+        # Кнопка "Удалить"
+        delete_btn = ttk.Button(buttons_frame, text="🗑️ Удалить", command=self.delete_interval)
+        delete_btn.pack(side=tk.LEFT, padx=(0, 5))
+
+        # Кнопка "Сохранить"
+        save_btn = ttk.Button(buttons_frame, text="💾 Сохранить", command=self.save_and_close)
+        save_btn.pack(side=tk.RIGHT, padx=(5, 0))
+
+        # Инициализация кнопок
+        edit_btn.state(['disabled'])
+        delete_btn.state(['disabled'])
+
+        # Привязка события выбора строки
+        self.tree.bind('<ButtonRelease-1>', lambda e: self.on_select(e, edit_btn, delete_btn))
+
+        # Загрузка текущего расписания
+        self.load_schedule_from_string(current_schedule)
+
+        # Настройка весов для правильного масштабирования
+        main_frame.columnconfigure(0, weight=1)
+        main_frame.rowconfigure(1, weight=1)
+
+    def load_schedule_from_string(self, schedule_str):
+        """Загрузить расписание из строки"""
+        if not schedule_str.strip():
             return
-        
-        item = self.tree.item(selected[0])
-        values = item['values']
-        slot_index = int(values[0]) - 1  # Номер слота (начинается с 1)
-        
-        self._open_slot_editor("Редактировать слот", slot_index)
-    
-    def _open_slot_editor(self, title, slot_index=None):
-        """Открывает диалоговое окно для редактирования одного слота"""
-        editor = tk.Toplevel(self.dialog)
-        editor.title(title)
-        editor.geometry("300x150")
-        editor.transient(self.dialog)
-        editor.grab_set()
-        editor.resizable(False, False)
-        
-        ttk.Label(editor, text="Начало (ЧЧ:ММ):").grid(row=0, column=0, padx=10, pady=10, sticky=tk.W)
-        start_var = tk.StringVar()
-        start_entry = ttk.Entry(editor, textvariable=start_var, width=10)
-        start_entry.grid(row=0, column=1, padx=10, pady=10)
-        
-        ttk.Label(editor, text="Конец (ЧЧ:ММ):").grid(row=1, column=0, padx=10, pady=10, sticky=tk.W)
-        end_var = tk.StringVar()
-        end_entry = ttk.Entry(editor, textvariable=end_var, width=10)
-        end_entry.grid(row=1, column=1, padx=10, pady=10)
-        
-        if slot_index is not None:
-            # Заполняем поля текущими значениями
-            start_var.set(self.slots[slot_index][0])
-            end_var.set(self.slots[slot_index][1])
-        
-        def save_slot():
-            start_time = start_var.get().strip()
-            end_time = end_var.get().strip()
-            
-            if not self._validate_time_format(start_time) or not self._validate_time_format(end_time):
-                messagebox.showerror("Ошибка", "Неверный формат времени. Используйте ЧЧ:ММ (например, 08:30)")
-                return
-            
-            if slot_index is None:
-                # Добавление нового слота
-                self.slots.append((start_time, end_time))
-            else:
-                # Редактирование существующего слота
-                self.slots[slot_index] = (start_time, end_time)
-            
-            self.load_slots_to_tree()
-            editor.destroy()
-        
-        ttk.Button(editor, text="Сохранить", command=save_slot).grid(row=2, column=0, columnspan=2, pady=10)
-    
-    def _validate_time_format(self, time_str):
-        """Проверяет, соответствует ли строка формату ЧЧ:ММ"""
-        import re
-        pattern = r'^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$'
-        return re.match(pattern, time_str) is not None
-    
-    def delete_slot(self):
-        """Удалить выбранный слот"""
-        selected = self.tree.selection()
-        if not selected:
-            messagebox.showinfo("Информация", "Выберите слот для удаления")
+
+        intervals = schedule_str.split(',')
+        for i, interval in enumerate(intervals):
+            parts = interval.strip().split('-')
+            if len(parts) == 2:
+                start_time, end_time = parts[0].strip(), parts[1].strip()
+                self.tree.insert('', tk.END, values=(i+1, start_time, end_time))
+
+    def add_interval(self):
+        """Добавить новый интервал"""
+        # Создаем диалог для ввода времени
+        dialog = tk.Toplevel(self.dialog)
+        dialog.title("Добавить интервал")
+        dialog.geometry("300x150")
+        dialog.transient(self.dialog)
+        dialog.grab_set()
+
+        # Фрейм для полей ввода
+        input_frame = ttk.Frame(dialog, padding="10")
+        input_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Поле для начала
+        ttk.Label(input_frame, text="Начало (ч:мм):").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
+        start_var = tk.StringVar(value="8:00")
+        start_entry = ttk.Entry(input_frame, textvariable=start_var, width=10)
+        start_entry.grid(row=0, column=1, padx=5, pady=5)
+
+        # Поле для конца
+        ttk.Label(input_frame, text="Конец (ч:мм):").grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
+        end_var = tk.StringVar(value="8:45")
+        end_entry = ttk.Entry(input_frame, textvariable=end_var, width=10)
+        end_entry.grid(row=1, column=1, padx=5, pady=5)
+
+        # Кнопки
+        button_frame = ttk.Frame(input_frame)
+        button_frame.grid(row=2, column=0, columnspan=2, pady=10)
+
+        ttk.Button(button_frame, text="Сохранить", 
+                  command=lambda: self._save_add_interval(start_var.get(), end_var.get(), dialog)).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(button_frame, text="Отмена", command=dialog.destroy).pack(side=tk.LEFT)
+
+    def _save_add_interval(self, start_time, end_time, dialog):
+        """Сохранить добавленный интервал"""
+        if not start_time or not end_time:
+            messagebox.showwarning("Предупреждение", "Введите время начала и конца")
             return
-        
-        if messagebox.askyesno("Подтверждение", "Удалить выбранный слот?"):
-            item = self.tree.item(selected[0])
-            values = item['values']
-            slot_index = int(values[0]) - 1
-            del self.slots[slot_index]
-            self.load_slots_to_tree()
-    
-    def move_up(self):
-        """Переместить выбранный слот вверх"""
-        selected = self.tree.selection()
-        if not selected:
+
+        # Добавляем в таблицу
+        self.tree.insert('', tk.END, values=(self.tree.size() + 1, start_time, end_time))
+        dialog.destroy()
+
+    def edit_interval(self):
+        """Редактировать выбранный интервал"""
+        selected_item = self.tree.selection()
+        if not selected_item:
+            messagebox.showwarning("Предупреждение", "Выберите интервал для редактирования")
             return
-        
-        item = self.tree.item(selected[0])
-        values = item['values']
-        slot_index = int(values[0]) - 1
-        
-        if slot_index > 0:
-            # Меняем местами с предыдущим слотом
-            self.slots[slot_index], self.slots[slot_index - 1] = self.slots[slot_index - 1], self.slots[slot_index]
-            self.load_slots_to_tree()
-            # Выбираем тот же слот после обновления
-            new_selection_id = self.tree.get_children()[slot_index - 1]
-            self.tree.selection_set(new_selection_id)
-    
-    def move_down(self):
-        """Переместить выбранный слот вниз"""
-        selected = self.tree.selection()
-        if not selected:
+
+        # Получаем текущие значения
+        values = self.tree.item(selected_item[0])['values']
+        start_time, end_time = values[1], values[2]
+
+        # Создаем диалог для редактирования
+        dialog = tk.Toplevel(self.dialog)
+        dialog.title("Редактировать интервал")
+        dialog.geometry("300x150")
+        dialog.transient(self.dialog)
+        dialog.grab_set()
+
+        # Фрейм для полей ввода
+        input_frame = ttk.Frame(dialog, padding="10")
+        input_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Поле для начала
+        ttk.Label(input_frame, text="Начало (ч:мм):").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
+        start_var = tk.StringVar(value=start_time)
+        start_entry = ttk.Entry(input_frame, textvariable=start_var, width=10)
+        start_entry.grid(row=0, column=1, padx=5, pady=5)
+
+        # Поле для конца
+        ttk.Label(input_frame, text="Конец (ч:мм):").grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
+        end_var = tk.StringVar(value=end_time)
+        end_entry = ttk.Entry(input_frame, textvariable=end_var, width=10)
+        end_entry.grid(row=1, column=1, padx=5, pady=5)
+
+        # Кнопки
+        button_frame = ttk.Frame(input_frame)
+        button_frame.grid(row=2, column=0, columnspan=2, pady=10)
+
+        ttk.Button(button_frame, text="Сохранить", 
+                  command=lambda: self._save_edit_interval(selected_item[0], start_var.get(), end_var.get(), dialog)).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(button_frame, text="Отмена", command=dialog.destroy).pack(side=tk.LEFT)
+
+    def _save_edit_interval(self, item_id, start_time, end_time, dialog):
+        """Сохранить отредактированный интервал"""
+        if not start_time or not end_time:
+            messagebox.showwarning("Предупреждение", "Введите время начала и конца")
             return
-        
-        item = self.tree.item(selected[0])
-        values = item['values']
-        slot_index = int(values[0]) - 1
-        
-        if slot_index < len(self.slots) - 1:
-            # Меняем местами со следующим слотом
-            self.slots[slot_index], self.slots[slot_index + 1] = self.slots[slot_index + 1], self.slots[slot_index]
-            self.load_slots_to_tree()
-            # Выбираем тот же слот после обновления
-            new_selection_id = self.tree.get_children()[slot_index + 1]
-            self.tree.selection_set(new_selection_id)
-    
+
+        # Обновляем значения в таблице
+        idx = self.tree.index(item_id)
+        self.tree.item(item_id, values=(idx + 1, start_time, end_time))
+        dialog.destroy()
+
+    def delete_interval(self):
+        """Удалить выбранный интервал"""
+        selected_item = self.tree.selection()
+        if not selected_item:
+            messagebox.showwarning("Предупреждение", "Выберите интервал для удаления")
+            return
+
+        if messagebox.askyesno("Подтверждение", "Вы уверены, что хотите удалить этот интервал?"):
+            self.tree.delete(selected_item[0])
+            # Перенумеровать строки после удаления
+            self.renumber_intervals()
+
+    def renumber_intervals(self):
+        """Перенумеровать строки в таблице"""
+        for idx, item in enumerate(self.tree.get_children()):
+            values = self.tree.item(item)['values']
+            self.tree.item(item, values=(idx + 1, values[1], values[2]))
+
+    def on_select(self, event, edit_btn, delete_btn):
+        """Обработчик выбора строки"""
+        selected = self.tree.selection()
+        if selected:
+            edit_btn.state(['!disabled'])
+            delete_btn.state(['!disabled'])
+        else:
+            edit_btn.state(['disabled'])
+            delete_btn.state(['disabled'])
+
     def save_and_close(self):
-        """Сохраняет результат и закрывает диалог"""
-        self.result = self._format_schedule_string()
+        """Сохранить результат и закрыть диалог"""
+        intervals = []
+        for item in self.tree.get_children():
+            values = self.tree.item(item)['values']
+            if len(values) == 3:
+                start_time, end_time = values[1], values[2]
+                intervals.append(f"{start_time}-{end_time}")
+        
+        self.result = ','.join(intervals)
         self.dialog.destroy()
 
 class ScheduleApp:
@@ -2908,7 +2919,7 @@ class ScheduleApp:
         # Создание диалогового окна для настроек
         dialog = tk.Toplevel(self.root)
         dialog.title("Настройки приложения")
-        dialog.geometry("550x600")  # Увеличил ширину для лучшего размещения
+        dialog.geometry("550x700")  # Увеличил ширину для лучшего размещения
         dialog.transient(self.root)
         dialog.grab_set()
         # Центрирование окна
@@ -2967,22 +2978,34 @@ class ScheduleApp:
         # === РАСПИСАНИЕ ЗВОНКОВ ===
         bell_frame = ttk.LabelFrame(main_frame, text="Расписание звонков", padding="10")
         bell_frame.grid(row=2, column=0, sticky=tk.W, padx=5, pady=5)
-        
+
         ttk.Label(bell_frame, text="Текущее расписание:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=2)
-        
+
         # Текстовое поле для отображения текущего расписания (только для чтения)
         bell_schedule_var = tk.StringVar(value=self.settings.get('bell_schedule', '8:00-8:45,8:55-9:40,9:50-10:35,10:45-11:30,11:40-12:25,12:35-13:20'))
         bell_schedule_display = ttk.Entry(bell_frame, textvariable=bell_schedule_var, width=50, state='readonly')
         bell_schedule_display.grid(row=1, column=0, columnspan=2, padx=5, pady=2, sticky=tk.W)
-        
-        # Кнопка для открытия редактора
-        open_editor_btn = ttk.Button(bell_frame, text="⚙️ Открыть редактор...", 
-                                   command=lambda: self.open_bell_schedule_editor(bell_schedule_var, dialog))
+
+        # --- ИСПРАВЛЕННАЯ КНОПКА ДЛЯ ОТКРЫТИЯ РЕДАКТОРА ---
+        def open_editor_wrapper():
+            """Обертка для открытия редактора расписания звонков"""
+            current_schedule = bell_schedule_var.get()
+            # Создаем экземпляр редактора, передавая ему родительское окно и текущее расписание
+            editor = BellScheduleEditor(dialog, current_schedule)
+            # Ждем, пока окно редактора не будет закрыто
+            dialog.wait_window(editor.dialog)
+            # Если пользователь сохранил изменения (editor.result не None), обновляем переменную
+            if editor.result is not None:
+                bell_schedule_var.set(editor.result)
+
+        # Кнопка "Открыть редактор..." теперь использует обертку
+        open_editor_btn = ttk.Button(bell_frame, text="⚙️ Открыть редактор...", command=open_editor_wrapper)
         open_editor_btn.grid(row=2, column=0, columnspan=2, pady=(5, 2), padx=5, sticky=tk.W)
-        
+        # -----------------------------
+
         # Подпись под кнопкой
         ttk.Label(bell_frame, text="Редактор расписания звонков", font=('Segoe UI', 9, 'italic')).grid(row=3, column=0, columnspan=2, sticky=tk.W, padx=5, pady=(0, 2))
-        
+                
         # === НАСТРОЙКИ АВТО-БЭКАПА ===
         backup_frame = ttk.LabelFrame(main_frame, text="Настройки авто-бэкапа", padding="10")
         backup_frame.grid(row=3, column=0, sticky=tk.W, padx=5, pady=5)
@@ -3028,16 +3051,256 @@ class ScheduleApp:
         save_button.grid(row=4, column=0, pady=20, padx=5, sticky=tk.E)
         
     def open_bell_schedule_editor(self, bell_schedule_var, parent_dialog):
-        """Открывает редактор расписания звонков"""
-        current_schedule = bell_schedule_var.get()
-        editor = BellScheduleEditor(self.root, current_schedule)
-        self.root.wait_window(editor.dialog)  # Ждем закрытия диалога редактора
+        """Открыть редактор расписания звонков"""
+        # Создание нового окна редактора
+        editor_dialog = tk.Toplevel(parent_dialog)
+        editor_dialog.title("Редактор расписания звонков")
+        editor_dialog.geometry("500x400")
+        editor_dialog.transient(parent_dialog)
+        editor_dialog.grab_set()
+
+        # Центрирование окна
+        editor_dialog.update_idletasks()
+        x = (editor_dialog.winfo_screenwidth() // 2) - (editor_dialog.winfo_width() // 2)
+        y = (editor_dialog.winfo_screenheight() // 2) - (editor_dialog.winfo_height() // 2)
+        editor_dialog.geometry(f"+{x}+{y}")
+
+        # Основной фрейм
+        main_frame = ttk.Frame(editor_dialog, padding="10")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Заголовок
+        title_label = ttk.Label(main_frame, text="Уроки:", font=('Segoe UI', 10, 'bold'))
+        title_label.grid(row=0, column=0, sticky=tk.W, pady=(0, 10))
+
+        # Таблица для отображения расписания звонков
+        columns = ('№', 'Начало', 'Конец')
+        self.bell_schedule_tree = ttk.Treeview(main_frame, columns=columns, show='headings', height=10)
         
-        if editor.result is not None:
-            # Обновляем переменную и, соответственно, поле в настройках
-            bell_schedule_var.set(editor.result)
-            # Также обновляем настройки приложения
-            self.settings['bell_schedule'] = editor.result
+        # Настройка заголовков столбцов
+        for col in columns:
+            self.bell_schedule_tree.heading(col, text=col)
+            self.bell_schedule_tree.column(col, width=80, anchor=tk.CENTER)
+        
+        # Прокрутка
+        scrollbar = ttk.Scrollbar(main_frame, orient=tk.VERTICAL, command=self.bell_schedule_tree.yview)
+        self.bell_schedule_tree.configure(yscrollcommand=scrollbar.set)
+        self.bell_schedule_tree.grid(row=1, column=0, sticky=tk.NSEW, padx=(0, 10))
+        scrollbar.grid(row=1, column=1, sticky=tk.NS, padx=(0, 10))
+
+        # Кнопки управления
+        buttons_frame = ttk.Frame(main_frame)
+        buttons_frame.grid(row=2, column=0, columnspan=2, pady=(10, 0), sticky=tk.E)
+
+        # Кнопка "Добавить"
+        add_btn = ttk.Button(buttons_frame, text="➕ Добавить", command=self.add_bell_interval)
+        add_btn.pack(side=tk.LEFT, padx=(0, 5))
+
+        # Кнопка "Редактировать"
+        edit_btn = ttk.Button(buttons_frame, text="✏️ Редактировать", command=self.edit_bell_interval)
+        edit_btn.pack(side=tk.LEFT, padx=(0, 5))
+
+        # Кнопка "Удалить"
+        delete_btn = ttk.Button(buttons_frame, text="🗑️ Удалить", command=self.delete_bell_interval)
+        delete_btn.pack(side=tk.LEFT, padx=(0, 5))
+
+        # Кнопка "Сохранить"
+        save_btn = ttk.Button(buttons_frame, text="💾 Сохранить", command=lambda: self.save_bell_schedule(bell_schedule_var, editor_dialog))
+        save_btn.pack(side=tk.RIGHT, padx=(5, 0))
+
+        # Загрузка текущего расписания из строки
+        self.load_bell_schedule_from_string(bell_schedule_var.get())
+
+        # Настройка весов для правильного масштабирования
+        main_frame.columnconfigure(0, weight=1)
+        main_frame.rowconfigure(1, weight=1)
+
+        # Привязка события выбора строки
+        self.bell_schedule_tree.bind('<ButtonRelease-1>', lambda e: self.on_bell_select(e, edit_btn, delete_btn))
+
+        # Инициализация кнопок
+        edit_btn.state(['disabled'])
+        delete_btn.state(['disabled'])
+
+    def load_bell_schedule_from_string(self, schedule_str):
+        """Загрузить расписание из строки"""
+        if not schedule_str.strip():
+            return
+
+        intervals = schedule_str.split(',')
+        for i, interval in enumerate(intervals):
+            parts = interval.strip().split('-')
+            if len(parts) == 2:
+                start_time, end_time = parts[0].strip(), parts[1].strip()
+                self.bell_schedule_tree.insert('', tk.END, values=(i+1, start_time, end_time))
+
+    def save_bell_schedule(self, var, dialog):
+        """Сохранить расписание в строку и закрыть диалог"""
+        intervals = []
+        for item in self.bell_schedule_tree.get_children():
+            values = self.bell_schedule_tree.item(item)['values']
+            if len(values) == 3:
+                start_time, end_time = values[1], values[2]
+                intervals.append(f"{start_time}-{end_time}")
+        
+        var.set(','.join(intervals))
+        dialog.destroy()
+
+    def add_bell_interval(self):
+        """Добавить новый интервал"""
+        editor_dialog = self.bell_schedule_tree.winfo_toplevel() # Получаем родительский диалог
+        
+        # Создаем диалог для ввода времени
+        add_dialog = tk.Toplevel(editor_dialog)
+        add_dialog.title("Добавить интервал")
+        add_dialog.geometry("300x150")
+        add_dialog.transient(editor_dialog)
+        add_dialog.grab_set()
+
+        # Центрирование
+        add_dialog.update_idletasks()
+        x = (add_dialog.winfo_screenwidth() // 2) - (add_dialog.winfo_width() // 2)
+        y = (add_dialog.winfo_screenheight() // 2) - (add_dialog.winfo_height() // 2)
+        add_dialog.geometry(f"+{x}+{y}")
+
+        # Фрейм для полей ввода
+        input_frame = ttk.Frame(add_dialog, padding="10")
+        input_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Поле для начала
+        ttk.Label(input_frame, text="Начало (ч:мм):").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
+        start_var = tk.StringVar(value="8:00")
+        start_entry = ttk.Entry(input_frame, textvariable=start_var, width=10)
+        start_entry.grid(row=0, column=1, padx=5, pady=5)
+
+        # Поле для конца
+        ttk.Label(input_frame, text="Конец (ч:мм):").grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
+        end_var = tk.StringVar(value="8:45")
+        end_entry = ttk.Entry(input_frame, textvariable=end_var, width=10)
+        end_entry.grid(row=1, column=1, padx=5, pady=5)
+
+        # Кнопки
+        button_frame = ttk.Frame(input_frame)
+        button_frame.grid(row=2, column=0, columnspan=2, pady=10)
+
+        ttk.Button(button_frame, text="Сохранить", 
+                  command=lambda: self._save_add_interval(start_var.get(), end_var.get(), add_dialog)).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(button_frame, text="Отмена", command=add_dialog.destroy).pack(side=tk.LEFT)
+
+    def _save_add_interval(self, start_time, end_time, dialog):
+        """Сохранить добавленный интервал"""
+        if not start_time or not end_time:
+            messagebox.showwarning("Предупреждение", "Введите время начала и конца")
+            return
+
+        # Простая валидация формата времени (можно улучшить)
+        try:
+            datetime.strptime(start_time, "%H:%M")
+            datetime.strptime(end_time, "%H:%M")
+        except ValueError:
+            messagebox.showwarning("Предупреждение", "Неверный формат времени. Используйте чч:мм (например, 08:00)")
+            return
+
+        # Добавляем в таблицу
+        self.bell_schedule_tree.insert('', tk.END, values=(self.bell_schedule_tree.size() + 1, start_time, end_time))
+        dialog.destroy()
+
+    def edit_bell_interval(self):
+        """Редактировать выбранный интервал"""
+        selected_item = self.bell_schedule_tree.selection()
+        if not selected_item:
+            messagebox.showwarning("Предупреждение", "Выберите интервал для редактирования")
+            return
+
+        # Получаем текущие значения
+        values = self.bell_schedule_tree.item(selected_item[0])['values']
+        start_time, end_time = values[1], values[2]
+
+        editor_dialog = self.bell_schedule_tree.winfo_toplevel() # Получаем родительский диалог
+        
+        # Создаем диалог для редактирования
+        edit_dialog = tk.Toplevel(editor_dialog)
+        edit_dialog.title("Редактировать интервал")
+        edit_dialog.geometry("300x150")
+        edit_dialog.transient(editor_dialog)
+        edit_dialog.grab_set()
+
+        # Центрирование
+        edit_dialog.update_idletasks()
+        x = (edit_dialog.winfo_screenwidth() // 2) - (edit_dialog.winfo_width() // 2)
+        y = (edit_dialog.winfo_screenheight() // 2) - (edit_dialog.winfo_height() // 2)
+        edit_dialog.geometry(f"+{x}+{y}")
+
+        # Фрейм для полей ввода
+        input_frame = ttk.Frame(edit_dialog, padding="10")
+        input_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Поле для начала
+        ttk.Label(input_frame, text="Начало (ч:мм):").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
+        start_var = tk.StringVar(value=start_time)
+        start_entry = ttk.Entry(input_frame, textvariable=start_var, width=10)
+        start_entry.grid(row=0, column=1, padx=5, pady=5)
+
+        # Поле для конца
+        ttk.Label(input_frame, text="Конец (ч:мм):").grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
+        end_var = tk.StringVar(value=end_time)
+        end_entry = ttk.Entry(input_frame, textvariable=end_var, width=10)
+        end_entry.grid(row=1, column=1, padx=5, pady=5)
+
+        # Кнопки
+        button_frame = ttk.Frame(input_frame)
+        button_frame.grid(row=2, column=0, columnspan=2, pady=10)
+
+        ttk.Button(button_frame, text="Сохранить", 
+                  command=lambda: self._save_edit_interval(selected_item[0], start_var.get(), end_var.get(), edit_dialog)).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(button_frame, text="Отмена", command=edit_dialog.destroy).pack(side=tk.LEFT)
+
+    def _save_edit_interval(self, item_id, start_time, end_time, dialog):
+        """Сохранить отредактированный интервал"""
+        if not start_time or not end_time:
+            messagebox.showwarning("Предупреждение", "Введите время начала и конца")
+            return
+
+        # Простая валидация формата времени
+        try:
+            datetime.strptime(start_time, "%H:%M")
+            datetime.strptime(end_time, "%H:%M")
+        except ValueError:
+            messagebox.showwarning("Предупреждение", "Неверный формат времени. Используйте чч:мм (например, 08:00)")
+            return
+
+        # Обновляем значения в таблице
+        idx = self.bell_schedule_tree.index(item_id)
+        self.bell_schedule_tree.item(item_id, values=(idx + 1, start_time, end_time))
+        dialog.destroy()
+
+    def delete_bell_interval(self):
+        """Удалить выбранный интервал"""
+        selected_item = self.bell_schedule_tree.selection()
+        if not selected_item:
+            messagebox.showwarning("Предупреждение", "Выберите интервал для удаления")
+            return
+
+        if messagebox.askyesno("Подтверждение", "Вы уверены, что хотите удалить этот интервал?"):
+            self.bell_schedule_tree.delete(selected_item[0])
+            # Перенумеровать строки после удаления
+            self.renumber_intervals()
+
+    def renumber_intervals(self):
+        """Перенумеровать строки в таблице"""
+        for idx, item in enumerate(self.bell_schedule_tree.get_children()):
+            values = self.bell_schedule_tree.item(item)['values']
+            self.bell_schedule_tree.item(item, values=(idx + 1, values[1], values[2]))
+
+    def on_bell_select(self, event, edit_btn, delete_btn):
+        """Обработчик выбора строки"""
+        selected = self.bell_schedule_tree.selection()
+        if selected:
+            edit_btn.state(['!disabled'])
+            delete_btn.state(['!disabled'])
+        else:
+            edit_btn.state(['disabled'])
+            delete_btn.state(['disabled'])
 
     def show_reports(self):
         """Показать отчеты"""
