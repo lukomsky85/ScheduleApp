@@ -783,6 +783,26 @@ class ScheduleApp:
         # Кнопка обновления
         ttk.Button(filter_frame, text="🔄 Обновить", command=self.filter_schedule).pack(side=tk.LEFT, padx=(10, 0))
 
+        # --- НОВЫЙ БЛОК: КНОПКИ УПРАВЛЕНИЯ ---
+        # Кнопки для расписания (используем акцентный стиль)
+        schedule_buttons_frame = ttk.Frame(self.schedule_frame)
+        schedule_buttons_frame.pack(fill=tk.X, pady=(0, 15))  # Отступ снизу 15px, чтобы отделить от таблицы
+
+        buttons = [
+            ("➕ Добавить занятие", self.add_lesson),
+            ("✏️ Редактировать", self.edit_lesson),
+            ("🗑️ Удалить занятие", self.delete_lesson),
+            ("🔄 Заменить занятие", self.substitute_lesson),
+            ("📅 Календарь", self.show_calendar),
+            ("🌐 Экспорт в HTML", self.export_to_html),
+            ("⏱️ Найти свободное время", self.find_free_slot)  # Новая кнопка
+        ]
+
+        for text, command in buttons:
+            btn = ttk.Button(schedule_buttons_frame, text=text, command=command)
+            btn.pack(side=tk.LEFT, padx=(0, 5))
+        # --- КОНЕЦ НОВОГО БЛОКА ---
+
         # Таблица расписания
         columns = ('Время', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье')
         self.schedule_tree = ttk.Treeview(self.schedule_frame, columns=columns, show='headings', height=20)
@@ -803,24 +823,6 @@ class ScheduleApp:
         self.schedule_tree.configure(yscrollcommand=scrollbar_y.set, xscrollcommand=scrollbar_x.set)
         scrollbar_y.pack(side=tk.RIGHT, fill=tk.Y)
         scrollbar_x.pack(side=tk.BOTTOM, fill=tk.X)
-
-        # Кнопки для расписания (используем акцентный стиль)
-        schedule_buttons_frame = ttk.Frame(self.schedule_frame)
-        schedule_buttons_frame.pack(fill=tk.X, pady=(10, 0))
-
-        buttons = [
-            ("➕ Добавить занятие", self.add_lesson),
-            ("✏️ Редактировать", self.edit_lesson),
-            ("🗑️ Удалить занятие", self.delete_lesson),
-            ("🔄 Заменить занятие", self.substitute_lesson),
-            ("📅 Календарь", self.show_calendar),
-            ("🌐 Экспорт в HTML", self.export_to_html),
-            ("⏱️ Найти свободное время", self.find_free_slot)  # Новая кнопка
-        ]
-
-        for text, command in buttons:
-            btn = ttk.Button(schedule_buttons_frame, text=text, command=command)
-            btn.pack(side=tk.LEFT, padx=(0, 5))
 
     def find_free_slot(self):
         """Найти ближайший свободный слот для выбранной группы, преподавателя или аудитории"""
@@ -1058,6 +1060,8 @@ class ScheduleApp:
         self.load_archive_list()
 
     def load_groups_data(self):
+        """Загрузка данных групп"""
+        # Очистка таблицы групп
         self.groups_tree.delete(*self.groups_tree.get_children())
         for group in self.groups:
             self.groups_tree.insert('', tk.END, values=(
@@ -1065,13 +1069,17 @@ class ScheduleApp:
                 group.get('students', 0), group.get('course', ''), 
                 group.get('specialty', '')
             ))
-        # Обновление комбобокса фильтра групп (если schedule_frame уже создан)
+        
+        # --- ДОБАВЛЕНО: Обновление комбобокса фильтра групп ---
+        # Получаем список названий групп
+        group_names = [group['name'] for group in self.groups]
+        # Устанавливаем значение по умолчанию (пусто)
+        self.group_filter_var.set('')
+        # Обновляем значения комбобокса
         if hasattr(self, 'schedule_frame') and self.schedule_frame.winfo_children():
-            group_names = [group['name'] for group in self.groups]
-            self.group_filter_var.set('')
-            # Найдем комбобокс групп в расписании
+            # Находим комбобокс группы в фильтрах
             for child in self.schedule_frame.winfo_children():
-                if isinstance(child, ttk.Frame):  # filter_frame
+                if isinstance(child, ttk.Frame):  # Это фрейм с фильтрами
                     for widget in child.winfo_children():
                         if isinstance(widget, ttk.Combobox) and 'group' in str(widget):
                             widget['values'] = [''] + group_names
@@ -1863,12 +1871,14 @@ class ScheduleApp:
     def filter_schedule(self, event=None):
         """Фильтрация расписания"""
         self.schedule_tree.delete(*self.schedule_tree.get_children())
+        
         # Получение выбранных значений
         week_text = self.week_var.get()
         week_num = int(week_text.split()[1]) if week_text and "Неделя" in week_text else 1
         group_name = self.group_filter_var.get()
         teacher_name = self.teacher_filter_var.get()
         classroom_name = self.classroom_filter_var.get()
+
         # Фильтрация данных
         filtered_schedule = self.schedule.copy()
         if not filtered_schedule.empty and 'week' in filtered_schedule.columns:
@@ -1880,28 +1890,31 @@ class ScheduleApp:
                 filtered_schedule = filtered_schedule[filtered_schedule['teacher_name'] == teacher_name]
             if classroom_name:
                 filtered_schedule = filtered_schedule[filtered_schedule['classroom_name'] == classroom_name]
-            # Создание простой таблицы расписания
+
+            # Создание корректной таблицы расписания
             if not filtered_schedule.empty:
                 days = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'][:self.settings['days_per_week']]
                 times = sorted(filtered_schedule['time'].unique())
+
                 for time_slot in times:
                     row_data = [time_slot]
-                    day_lessons = {}
-                    # Получаем занятия для каждого дня
+                    # Для каждого дня недели ищем занятие в этом временном слоте
                     for day in days:
                         lesson = filtered_schedule[
                             (filtered_schedule['time'] == time_slot) & 
                             (filtered_schedule['day'] == day) & 
                             (filtered_schedule['status'] == 'подтверждено')
                         ]
+                        
                         if not lesson.empty:
+                            # Берем первое занятие из возможных (в реальности для группы в слоте должно быть одно)
                             lesson_info = lesson.iloc[0]
-                            day_lessons[day] = f"{lesson_info['group_name']}\n{lesson_info['subject_name']}\n{lesson_info['teacher_name']}\n{lesson_info['classroom_name']}"
+                            lesson_display = f"{lesson_info['group_name']}\n{lesson_info['subject_name']}\n{lesson_info['teacher_name']}\n{lesson_info['classroom_name']}"
                         else:
-                            day_lessons[day] = ""
-                    # Добавляем данные для каждого дня
-                    for day in days:
-                        row_data.append(day_lessons.get(day, ""))
+                            lesson_display = ""
+
+                        row_data.append(lesson_display)
+                    
                     self.schedule_tree.insert('', tk.END, values=row_data)
             else:
                 # Если нет данных, показываем пустую таблицу
@@ -1909,7 +1922,7 @@ class ScheduleApp:
         else:
             # Если нет данных, показываем пустую таблицу
             self.show_empty_schedule()
-
+            
     def show_empty_schedule(self):
         """Показать пустое расписание"""
         times = [f"{8+i}:00-{8+i}:45" for i in range(self.settings['lessons_per_day'])]
