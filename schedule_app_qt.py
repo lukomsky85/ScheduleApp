@@ -1396,44 +1396,45 @@ class ScheduleApp(QMainWindow):
             dialog.accept()
         else:
             QMessageBox.critical(self, "Ошибка", "Не удалось найти подходящий слот в расписании")
+
     def edit_lesson(self):
         """Редактирует выбранное занятие."""
         selected_indexes = self.schedule_view.selectionModel().selectedIndexes()
         if not selected_indexes:
             QMessageBox.information(self, "Информация", "Выберите занятие в таблице для редактирования")
             return
-        
+
         # Получаем индекс выбранной ячейки
         selected_index = selected_indexes[0]
         row = selected_index.row()
         col = selected_index.column()
-        
-        # Первый столбец (0) - это время. Если выбран он, то удалять нечего.
+
+        # Первый столбец (0) - это время. Если выбран он, то редактировать нечего.
         if col == 0:
             QMessageBox.warning(self, "Предупреждение", "Выберите ячейку с занятием (не время)")
             return
-        
-        # Получаем время из первого столбца той же строки
+
+        # Получаем время из первого столбца той же строки через прокси-модель
         time_index = self.schedule_proxy_model.index(row, 0)
         time_slot = self.schedule_proxy_model.data(time_index)
         if not time_slot:
             QMessageBox.warning(self, "Ошибка", "Не удалось определить время занятия")
             return
-        
+
         # Получаем день недели из заголовка столбца
         day_header = self.schedule_proxy_model.headerData(col, Qt.Horizontal, Qt.DisplayRole)
         if not day_header:
             QMessageBox.warning(self, "Ошибка", "Не удалось определить день недели")
             return
-        selected_day = day_header.text().strip()
-        
+        selected_day = day_header.strip()
+
         # Получаем текущий номер недели из фильтра
         week_text = self.week_var.currentText()
         try:
             selected_week = int(week_text.split()[1]) if "Неделя" in week_text else 1
         except (ValueError, IndexError):
             selected_week = 1
-        
+
         # Фильтруем DataFrame, чтобы найти конкретное занятие
         target_lesson = self.schedule[
             (self.schedule['week'] == selected_week) &
@@ -1444,26 +1445,137 @@ class ScheduleApp(QMainWindow):
         if target_lesson.empty:
             QMessageBox.information(self, "Информация", "Выбранное занятие не найдено в расписании")
             return
-        
-        # Подтверждение редактирования
+
+        # Получаем данные занятия
         lesson_info = target_lesson.iloc[0]
-        confirm_text = (
-            f"Вы уверены, что хотите отредактировать это занятие?\n"
-            f"Предмет: {lesson_info['subject_name']}\n"
-            f"Группа: {lesson_info['group_name']}\n"
-            f"Преподаватель: {lesson_info['teacher_name']}\n"
-            f"Аудитория: {lesson_info['classroom_name']}\n"
-            f"День: {selected_day}\n"
-            f"Время: {time_slot}\n"
-            f"Неделя: {selected_week}"
-        )
-        if QMessageBox.question(self, "Подтверждение редактирования", confirm_text) != QMessageBox.Yes:
-            return
-        
-        # Открываем диалог редактирования (в этом примере просто показываем сообщение)
-        # Здесь должен быть вызов диалогового окна для редактирования данных
-        QMessageBox.information(self, "Информация", "Функция редактирования занятия пока не реализована.")
-        
+        lesson_idx = target_lesson.index[0]  # Индекс в исходном DataFrame
+
+        # Создаем диалоговое окно для редактирования
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Редактировать занятие")
+        dialog.setModal(True)
+        dialog.resize(500, 400)
+        form_layout = QFormLayout(dialog)
+
+        # Поля для редактирования
+        week_var = QComboBox()
+        week_var.addItems([str(i) for i in range(1, self.settings['weeks'] + 1)])
+        week_var.setCurrentText(str(selected_week))
+
+        day_var = QComboBox()
+        day_var.addItems(['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'][:self.settings['days_per_week']])
+        day_var.setCurrentText(selected_day)
+
+        time_var = QComboBox()
+        # Получаем текущее расписание звонков
+        bell_schedule_str = self.settings.get('bell_schedule', '8:00-8:45,8:55-9:40,9:50-10:35,10:45-11:30,11:40-12:25,12:35-13:20')
+        times = [slot.strip() for slot in bell_schedule_str.split(',')]
+        time_var.addItems(times)
+        time_var.setCurrentText(time_slot)
+
+        group_var = QComboBox()
+        group_var.addItems([g['name'] for g in self.groups])
+        group_var.setCurrentText(lesson_info['group_name'])
+
+        subject_var = QComboBox()
+        subject_var.addItems([s['name'] for s in self.subjects])
+        subject_var.setCurrentText(lesson_info['subject_name'])
+
+        teacher_var = QComboBox()
+        teacher_var.addItems([t['name'] for t in self.teachers])
+        teacher_var.setCurrentText(lesson_info['teacher_name'])
+
+        classroom_var = QComboBox()
+        classroom_var.addItems([c['name'] for c in self.classrooms])
+        classroom_var.setCurrentText(lesson_info['classroom_name'])
+
+        form_layout.addRow("Неделя:", week_var)
+        form_layout.addRow("День недели:", day_var)
+        form_layout.addRow("Время:", time_var)
+        form_layout.addRow("Группа:", group_var)
+        form_layout.addRow("Предмет:", subject_var)
+        form_layout.addRow("Преподаватель:", teacher_var)
+        form_layout.addRow("Аудитория:", classroom_var)
+
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        button_box.accepted.connect(dialog.accept)
+        button_box.rejected.connect(dialog.reject)
+        form_layout.addRow(button_box)
+
+        # Если пользователь нажал OK
+        if dialog.exec_() == QDialog.Accepted:
+            # Получаем новые значения
+            new_week = int(week_var.currentText())
+            new_day = day_var.currentText()
+            new_time = time_var.currentText()
+            new_group_name = group_var.currentText()
+            new_subject_name = subject_var.currentText()
+            new_teacher_name = teacher_var.currentText()
+            new_classroom_name = classroom_var.currentText()
+
+            # Находим объекты по именам
+            new_group = next((g for g in self.groups if g['name'] == new_group_name), None)
+            new_subject = next((s for s in self.subjects if s['name'] == new_subject_name), None)
+            new_teacher = next((t for t in self.teachers if t['name'] == new_teacher_name), None)
+            new_classroom = next((c for c in self.classrooms if c['name'] == new_classroom_name), None)
+
+            if not all([new_group, new_subject, new_teacher, new_classroom]):
+                QMessageBox.critical(self, "Ошибка", "Не удалось найти выбранные элементы в базе данных")
+                return
+
+            # Проверяем, не занято ли новое время у новой группы
+            existing_lesson = self.schedule[
+                (self.schedule['week'] == new_week) &
+                (self.schedule['day'] == new_day) &
+                (self.schedule['time'] == new_time) &
+                (self.schedule['group_id'] == new_group['id']) &
+                (self.schedule['status'] != 'свободно') &
+                (self.schedule.index != lesson_idx)  # Исключаем текущее занятие
+            ]
+            if not existing_lesson.empty:
+                if QMessageBox.question(self, "Подтверждение", "В выбранное время у этой группы уже есть занятие. Заменить его?") != QMessageBox.Yes:
+                    return
+
+            # Находим строку в расписании, которую нужно обновить
+            target_row = self.schedule[
+                (self.schedule['week'] == new_week) &
+                (self.schedule['day'] == new_day) &
+                (self.schedule['time'] == new_time) &
+                (self.schedule['group_id'] == new_group['id'])
+            ]
+            if not target_row.empty:
+                update_idx = target_row.index[0]
+            else:
+                # Если слот не найден (что маловероятно), создаем новую запись?
+                # В нашем случае, структура расписания фиксирована, поэтому такого быть не должно.
+                QMessageBox.critical(self, "Ошибка", "Не удалось найти подходящий слот в расписании для обновления")
+                return
+
+            # Обновляем данные в DataFrame
+            self.schedule.loc[update_idx, 'week'] = new_week
+            self.schedule.loc[update_idx, 'day'] = new_day
+            self.schedule.loc[update_idx, 'time'] = new_time
+            self.schedule.loc[update_idx, 'group_id'] = new_group['id']
+            self.schedule.loc[update_idx, 'group_name'] = new_group['name']
+            self.schedule.loc[update_idx, 'subject_id'] = new_subject['id']
+            self.schedule.loc[update_idx, 'subject_name'] = new_subject['name']
+            self.schedule.loc[update_idx, 'teacher_id'] = new_teacher['id']
+            self.schedule.loc[update_idx, 'teacher_name'] = new_teacher['name']
+            self.schedule.loc[update_idx, 'classroom_id'] = new_classroom['id']
+            self.schedule.loc[update_idx, 'classroom_name'] = new_classroom['name']
+            self.schedule.loc[update_idx, 'status'] = 'подтверждено'
+
+            # Если занятие перемещено, старый слот становится свободным
+            if update_idx != lesson_idx:
+                self.schedule.loc[lesson_idx, ['subject_id', 'subject_name', 'teacher_id', 'teacher_name', 'classroom_id', 'classroom_name']] = [None, '', None, '', None, '']
+                self.schedule.loc[lesson_idx, 'status'] = 'свободно'
+
+            # Обновляем отображение таблицы и отчеты
+            self.filter_schedule()
+            self.update_reports()
+            self.create_backup()
+            QMessageBox.information(self, "Успех", "Занятие успешно отредактировано!")
+            
     def delete_lesson(self):
         """Удаляет выбранное занятие из расписания."""
         selected_indexes = self.schedule_view.selectionModel().selectedIndexes()
