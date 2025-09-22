@@ -239,6 +239,77 @@ class ScheduleApp(QMainWindow):
         self.load_data()
         self.start_auto_backup()
         self.check_and_update_experience()
+        
+    def check_for_updates(self):
+        """
+        Проверяет наличие обновлений приложения.
+        Сравнивает текущую версию с последней версией, указанной в удаленном JSON-файле.
+        """
+        import requests
+        import webbrowser
+        from packaging import version
+
+        # URL файла с информацией об обновлении (вы должны создать и разместить этот файл)
+        # Пример содержимого latest_version.json:
+        # {
+        #     "version": "2.1",
+        #     "download_url": "https://github.com/yourusername/yourrepo/releases/latest",
+        #     "changelog": "Исправлены ошибки, добавлена функция обновления."
+        # }
+        UPDATE_INFO_URL = "https://scheduleapp.lukomsky.ru/updates/latest_version.json"
+
+        CURRENT_VERSION = "2.0"  # Замените на вашу текущую версию. Можно вынести в settings.
+
+        try:
+            # Отправляем GET-запрос для получения информации об обновлении
+            response = requests.get(UPDATE_INFO_URL, timeout=10)
+            response.raise_for_status()  # Вызывает исключение для плохих статусов
+
+            update_info = response.json()
+            latest_version = update_info.get('version', '0.0')
+            download_url = update_info.get('download_url', '')
+            changelog = update_info.get('changelog', 'Информация об изменениях отсутствует.')
+
+            # Сравниваем версии
+            if version.parse(latest_version) > version.parse(CURRENT_VERSION):
+                # Есть обновление!
+                dialog = QDialog(self)
+                dialog.setWindowTitle("Доступно обновление!")
+                dialog.setModal(True)
+                dialog.resize(500, 300)
+
+                layout = QVBoxLayout(dialog)
+
+                info_label = QLabel(f"""
+                <h2>Доступна новая версия!</h2>
+                <p><b>Текущая версия:</b> {CURRENT_VERSION}</p>
+                <p><b>Новая версия:</b> {latest_version}</p>
+                <p><b>Что нового:</b></p>
+                <p>{changelog}</p>
+                """)
+                info_label.setWordWrap(True)
+                layout.addWidget(info_label)
+
+                button_box = QDialogButtonBox()
+                download_btn = QPushButton("⬇️ Скачать обновление")
+                skip_btn = QPushButton("Пропустить")
+                button_box.addButton(download_btn, QDialogButtonBox.AcceptRole)
+                button_box.addButton(skip_btn, QDialogButtonBox.RejectRole)
+
+                download_btn.clicked.connect(lambda: webbrowser.open(download_url))
+                skip_btn.clicked.connect(dialog.reject)
+
+                layout.addWidget(button_box)
+
+                dialog.exec_()
+            else:
+                QMessageBox.information(self, "Обновления", "У вас установлена последняя версия приложения.")
+
+        except requests.exceptions.RequestException as req_err:
+            QMessageBox.warning(self, "Ошибка сети", f"Не удалось проверить обновления: {str(req_err)}")
+        except Exception as e:
+            QMessageBox.warning(self, "Ошибка", f"Произошла ошибка при проверке обновлений: {str(e)}")       
+        
     def create_widgets(self):
         # Центральный виджет
         central_widget = QWidget()
@@ -262,6 +333,11 @@ class ScheduleApp(QMainWindow):
         file_menu.addAction(settings_action)
         file_menu.addAction(backup_action)
         file_menu.addAction(about_action)
+        # Меню Помощь
+        help_menu = menubar.addMenu("Помощь")
+        check_update_action = QAction("🔄 Проверить обновления", self)
+        check_update_action.triggered.connect(self.check_for_updates)
+        help_menu.addAction(check_update_action)
         # Заголовок
         title_frame = QFrame()
         title_layout = QHBoxLayout(title_frame)
