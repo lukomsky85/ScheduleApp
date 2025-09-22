@@ -6,22 +6,21 @@ import shutil
 import zipfile
 from datetime import datetime, timedelta
 from pathlib import Path
-
 import pandas as pd
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QSortFilterProxyModel, QModelIndex
 from PyQt5.QtGui import QFont, QIcon, QColor, QPalette, QStandardItemModel, QStandardItem
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QTabWidget, QTableWidget, QTableWidgetItem, QHeaderView, QLabel, QPushButton,
     QComboBox, QSpinBox, QProgressBar, QStatusBar, QFileDialog, QMessageBox,
     QDialog, QLineEdit, QFormLayout, QDialogButtonBox, QGroupBox, QScrollArea,
-    QTreeView, QAbstractItemView, QMenu, QAction, QDateEdit, QCalendarWidget,
+    QTreeView, QTableView, QAbstractItemView, QMenu, QAction, QDateEdit, QCalendarWidget,  # <-- ДОБАВЛЕНО QTableView
     QFrame, QSizePolicy, QCheckBox, QSpinBox, QDoubleSpinBox, QMenuBar, QToolBar,
-    QTextEdit  # <-- ДОБАВЛЕНО
+    QTextEdit
 )
-
 # Импортируем необходимые модули для работы с датами и временем
 import calendar
+from datetime import datetime as dt_datetime
 
 # Глобальные стили и цвета
 COLORS = {
@@ -46,18 +45,14 @@ class BellScheduleEditor(QDialog):
         self.resize(500, 400)
         self.current_schedule = current_schedule
         self.result = None
-
         self.setup_ui()
         self.load_schedule_from_string(current_schedule)
-
     def setup_ui(self):
         layout = QVBoxLayout(self)
-
         # Заголовок
         title_label = QLabel("Уроки:")
         title_label.setFont(QFont('Segoe UI', 10, QFont.Bold))
         layout.addWidget(title_label)
-
         # Таблица
         self.tree = QTableWidget(0, 3)
         self.tree.setHorizontalHeaderLabels(['№', 'Начало', 'Конец'])
@@ -65,32 +60,25 @@ class BellScheduleEditor(QDialog):
         self.tree.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.tree.setSelectionMode(QAbstractItemView.SingleSelection)
         layout.addWidget(self.tree, 1)
-
         # Кнопки
         buttons_layout = QHBoxLayout()
         self.add_btn = QPushButton("➕ Добавить")
         self.edit_btn = QPushButton("✏️ Редактировать")
         self.delete_btn = QPushButton("🗑️ Удалить")
         self.save_btn = QPushButton("💾 Сохранить")
-
         self.edit_btn.setEnabled(False)
         self.delete_btn.setEnabled(False)
-
         self.add_btn.clicked.connect(self.add_interval)
         self.edit_btn.clicked.connect(self.edit_interval)
         self.delete_btn.clicked.connect(self.delete_interval)
         self.save_btn.clicked.connect(self.save_and_close)
-
         self.tree.itemSelectionChanged.connect(self.on_select)
-
         buttons_layout.addWidget(self.add_btn)
         buttons_layout.addWidget(self.edit_btn)
         buttons_layout.addWidget(self.delete_btn)
         buttons_layout.addStretch()
         buttons_layout.addWidget(self.save_btn)
-
         layout.addLayout(buttons_layout)
-
     def load_schedule_from_string(self, schedule_str):
         if not schedule_str.strip():
             return
@@ -104,26 +92,21 @@ class BellScheduleEditor(QDialog):
                 self.tree.setItem(row, 0, QTableWidgetItem(str(i + 1)))
                 self.tree.setItem(row, 1, QTableWidgetItem(start_time))
                 self.tree.setItem(row, 2, QTableWidgetItem(end_time))
-
     def add_interval(self):
         dialog = QDialog(self)
         dialog.setWindowTitle("Добавить интервал")
         dialog.setModal(True)
         dialog.resize(300, 150)
-
         form_layout = QFormLayout(dialog)
         start_var = QLineEdit("8:00")
         end_var = QLineEdit("8:45")
         form_layout.addRow("Начало (ч:мм):", start_var)
         form_layout.addRow("Конец (ч:мм):", end_var)
-
         button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         button_box.accepted.connect(lambda: self._save_add_interval(start_var.text(), end_var.text(), dialog))
         button_box.rejected.connect(dialog.reject)
         form_layout.addRow(button_box)
-
         dialog.exec_()
-
     def _save_add_interval(self, start_time, end_time, dialog):
         if not start_time or not end_time:
             QMessageBox.warning(self, "Предупреждение", "Введите время начала и конца")
@@ -134,35 +117,28 @@ class BellScheduleEditor(QDialog):
         self.tree.setItem(row, 1, QTableWidgetItem(start_time))
         self.tree.setItem(row, 2, QTableWidgetItem(end_time))
         dialog.accept()
-
     def edit_interval(self):
         selected_items = self.tree.selectedItems()
         if not selected_items:
             QMessageBox.warning(self, "Предупреждение", "Выберите интервал для редактирования")
             return
-
         row = selected_items[0].row()
         start_time = self.tree.item(row, 1).text()
         end_time = self.tree.item(row, 2).text()
-
         dialog = QDialog(self)
         dialog.setWindowTitle("Редактировать интервал")
         dialog.setModal(True)
         dialog.resize(300, 150)
-
         form_layout = QFormLayout(dialog)
         start_var = QLineEdit(start_time)
         end_var = QLineEdit(end_time)
         form_layout.addRow("Начало (ч:мм):", start_var)
         form_layout.addRow("Конец (ч:мм):", end_var)
-
         button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         button_box.accepted.connect(lambda: self._save_edit_interval(row, start_var.text(), end_var.text(), dialog))
         button_box.rejected.connect(dialog.reject)
         form_layout.addRow(button_box)
-
         dialog.exec_()
-
     def _save_edit_interval(self, row, start_time, end_time, dialog):
         if not start_time or not end_time:
             QMessageBox.warning(self, "Предупреждение", "Введите время начала и конца")
@@ -170,28 +146,23 @@ class BellScheduleEditor(QDialog):
         self.tree.setItem(row, 1, QTableWidgetItem(start_time))
         self.tree.setItem(row, 2, QTableWidgetItem(end_time))
         dialog.accept()
-
     def delete_interval(self):
         selected_items = self.tree.selectedItems()
         if not selected_items:
             QMessageBox.warning(self, "Предупреждение", "Выберите интервал для удаления")
             return
-
         if QMessageBox.question(self, "Подтверждение", "Вы уверены, что хотите удалить этот интервал?") == QMessageBox.Yes:
             row = selected_items[0].row()
             self.tree.removeRow(row)
             self.renumber_intervals()
-
     def renumber_intervals(self):
         for row in range(self.tree.rowCount()):
             self.tree.setItem(row, 0, QTableWidgetItem(str(row + 1)))
-
     def on_select(self):
         selected = self.tree.selectedItems()
         has_selection = len(selected) > 0
         self.edit_btn.setEnabled(has_selection)
         self.delete_btn.setEnabled(has_selection)
-
     def save_and_close(self):
         intervals = []
         for row in range(self.tree.rowCount()):
@@ -201,6 +172,30 @@ class BellScheduleEditor(QDialog):
         self.result = ','.join(intervals)
         self.accept()
 
+class TimeSortProxyModel(QSortFilterProxyModel):
+    """Класс-наследник QSortFilterProxyModel для правильной сортировки по времени."""
+    
+    def lessThan(self, left, right):
+        """
+        Переопределение метода lessThan для сравнения временных интервалов.
+        Сравнивает начало каждого интервала.
+        """
+        # Получаем значение ячейки по индексу
+        left_data = self.sourceModel().data(left)
+        right_data = self.sourceModel().data(right)
+        
+        # Преобразуем строку "HH:MM-HH:MM" в время начала
+        def parse_time(time_str):
+            start_time_str = time_str.split('-')[0].strip()
+            return dt_datetime.strptime(start_time_str, '%H:%M')
+        
+        try:
+            left_start = parse_time(left_data)
+            right_start = parse_time(right_data)
+            return left_start < right_start
+        except ValueError:
+            # Если парсинг не удался, используем стандартную лексикографическую сортировку
+            return left_data < right_data
 
 class ScheduleApp(QMainWindow):
     def __init__(self):
@@ -208,7 +203,6 @@ class ScheduleApp(QMainWindow):
         self.setWindowTitle("🎓 Система автоматического составления расписания")
         self.setGeometry(100, 100, 1400, 900)
         self.setMinimumSize(1200, 800)
-
         # Данные приложения
         self.settings = {
             'days_per_week': 5,
@@ -233,28 +227,23 @@ class ScheduleApp(QMainWindow):
         self.backup_timer = None
         self.last_backup_time = None
         self.next_backup_time = None
-
         # Создание директории для бэкапов
         self.backup_dir = "backups"
         if not os.path.exists(self.backup_dir):
             os.makedirs(self.backup_dir)
-
         # Создание директории для архива расписаний
         self.archive_dir = "schedule_archive"
         if not os.path.exists(self.archive_dir):
             os.makedirs(self.archive_dir)
-
         self.create_widgets()
         self.load_data()
         self.start_auto_backup()
         self.check_and_update_experience()
-
     def create_widgets(self):
         # Центральный виджет
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
-
         # Меню
         menubar = self.menuBar()
         file_menu = menubar.addMenu("Файл")
@@ -268,13 +257,11 @@ class ScheduleApp(QMainWindow):
         backup_action.triggered.connect(self.open_backup_manager)
         about_action = QAction("❓ О программе", self)
         about_action.triggered.connect(self.show_about)
-
         file_menu.addAction(save_action)
         file_menu.addAction(load_action)
         file_menu.addAction(settings_action)
         file_menu.addAction(backup_action)
         file_menu.addAction(about_action)
-
         # Заголовок
         title_frame = QFrame()
         title_layout = QHBoxLayout(title_frame)
@@ -283,7 +270,6 @@ class ScheduleApp(QMainWindow):
         title_label.setStyleSheet(f"color: {COLORS['secondary']};")
         title_layout.addWidget(title_label)
         title_layout.addStretch()
-
         # Индикатор авто-бэкапа
         backup_indicator_frame = QFrame()
         backup_indicator_layout = QVBoxLayout(backup_indicator_frame)
@@ -295,40 +281,32 @@ class ScheduleApp(QMainWindow):
         backup_indicator_layout.addWidget(self.backup_status_label)
         backup_indicator_layout.addWidget(self.backup_info_label)
         title_layout.addWidget(backup_indicator_frame)
-
         main_layout.addWidget(title_frame)
-
         # Верхняя панель с настройками
         settings_frame = QGroupBox("⚙️ Настройки расписания")
         settings_layout = QGridLayout(settings_frame)
-
         # Параметры расписания
         days_label = QLabel("Дней в неделю:")
         self.days_var = QSpinBox()
         self.days_var.setRange(1, 7)
         self.days_var.setValue(self.settings['days_per_week'])
-
         lessons_label = QLabel("Занятий в день:")
         self.lessons_var = QSpinBox()
         self.lessons_var.setRange(1, 12)
         self.lessons_var.setValue(self.settings['lessons_per_day'])
-
         weeks_label = QLabel("Недель:")
         self.weeks_var = QSpinBox()
         self.weeks_var.setRange(1, 12)
         self.weeks_var.setValue(self.settings['weeks'])
-
         settings_layout.addWidget(days_label, 0, 0)
         settings_layout.addWidget(self.days_var, 0, 1)
         settings_layout.addWidget(lessons_label, 0, 2)
         settings_layout.addWidget(self.lessons_var, 0, 3)
         settings_layout.addWidget(weeks_label, 0, 4)
         settings_layout.addWidget(self.weeks_var, 0, 5)
-
         # Кнопки управления
         buttons_frame = QFrame()
         buttons_layout = QHBoxLayout(buttons_frame)
-
         generate_btn = QPushButton("🚀 Сгенерировать расписание")
         generate_btn.clicked.connect(self.generate_schedule_thread)
         check_btn = QPushButton("🔍 Проверить конфликт")
@@ -343,7 +321,6 @@ class ScheduleApp(QMainWindow):
         export_html_btn.clicked.connect(self.export_to_html)
         substitutions_btn = QPushButton("🔄 Журнал замен")
         substitutions_btn.clicked.connect(self.open_substitutions)
-
         buttons_layout.addWidget(generate_btn)
         buttons_layout.addWidget(check_btn)
         buttons_layout.addWidget(optimize_btn)
@@ -352,21 +329,16 @@ class ScheduleApp(QMainWindow):
         buttons_layout.addWidget(export_html_btn)
         buttons_layout.addWidget(substitutions_btn)
         buttons_layout.addStretch()
-
         settings_layout.addWidget(buttons_frame, 1, 0, 1, 6)
-
         # Прогресс-бар
         self.progress = QProgressBar()
         self.progress.setRange(0, 0)  # Indeterminate
         self.progress.hide()
         settings_layout.addWidget(self.progress, 2, 0, 1, 6)
-
         main_layout.addWidget(settings_frame)
-
         # Основная область с вкладками
         self.notebook = QTabWidget()
         main_layout.addWidget(self.notebook, 1)
-
         # Создание вкладок
         self.create_groups_tab()
         self.create_teachers_tab()
@@ -376,20 +348,16 @@ class ScheduleApp(QMainWindow):
         self.create_reports_tab()
         self.create_holidays_tab()
         self.create_archive_tab()
-
         # Статусная строка
         self.statusBar = QStatusBar()
         self.setStatusBar(self.statusBar)
         self.status_var = "Готов к работе"
         self.statusBar.showMessage(self.status_var)
-
         # Обновляем индикатор бэкапа
         self.update_backup_indicator()
-
     def create_groups_tab(self):
         tab = QWidget()
         layout = QVBoxLayout(tab)
-
         # Кнопки
         btn_frame = QFrame()
         btn_layout = QHBoxLayout(btn_frame)
@@ -404,20 +372,16 @@ class ScheduleApp(QMainWindow):
         btn_layout.addWidget(delete_btn)
         btn_layout.addStretch()
         layout.addWidget(btn_frame)
-
         # Таблица
         self.groups_tree = QTableWidget(0, 6)
         self.groups_tree.setHorizontalHeaderLabels(['ID', 'Название', 'Тип', 'Студенты', 'Курс', 'Специальность'])
         self.groups_tree.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.groups_tree.setSelectionBehavior(QAbstractItemView.SelectRows)
         layout.addWidget(self.groups_tree, 1)
-
         self.notebook.addTab(tab, "👥 Группы")
-
     def create_teachers_tab(self):
         tab = QWidget()
         layout = QVBoxLayout(tab)
-
         # Кнопки
         btn_frame = QFrame()
         btn_layout = QHBoxLayout(btn_frame)
@@ -435,20 +399,16 @@ class ScheduleApp(QMainWindow):
         btn_layout.addWidget(update_exp_btn)
         btn_layout.addStretch()
         layout.addWidget(btn_frame)
-
         # Таблица
         self.teachers_tree = QTableWidget(0, 6)
         self.teachers_tree.setHorizontalHeaderLabels(['ID', 'ФИО', 'Предметы', 'Макс. часов', 'Квалификация', 'Стаж'])
         self.teachers_tree.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.teachers_tree.setSelectionBehavior(QAbstractItemView.SelectRows)
         layout.addWidget(self.teachers_tree, 1)
-
         self.notebook.addTab(tab, "👨‍🏫 Преподаватели")
-
     def create_classrooms_tab(self):
         tab = QWidget()
         layout = QVBoxLayout(tab)
-
         # Кнопки
         btn_frame = QFrame()
         btn_layout = QHBoxLayout(btn_frame)
@@ -463,20 +423,16 @@ class ScheduleApp(QMainWindow):
         btn_layout.addWidget(delete_btn)
         btn_layout.addStretch()
         layout.addWidget(btn_frame)
-
         # Таблица
         self.classrooms_tree = QTableWidget(0, 6)
         self.classrooms_tree.setHorizontalHeaderLabels(['ID', 'Номер', 'Вместимость', 'Тип', 'Оборудование', 'Расположение'])
         self.classrooms_tree.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.classrooms_tree.setSelectionBehavior(QAbstractItemView.SelectRows)
         layout.addWidget(self.classrooms_tree, 1)
-
         self.notebook.addTab(tab, "🏫 Аудитории")
-
     def create_subjects_tab(self):
         tab = QWidget()
         layout = QVBoxLayout(tab)
-
         # Кнопки
         btn_frame = QFrame()
         btn_layout = QHBoxLayout(btn_frame)
@@ -491,25 +447,20 @@ class ScheduleApp(QMainWindow):
         btn_layout.addWidget(delete_btn)
         btn_layout.addStretch()
         layout.addWidget(btn_frame)
-
         # Таблица
         self.subjects_tree = QTableWidget(0, 6)
         self.subjects_tree.setHorizontalHeaderLabels(['ID', 'Название', 'Тип группы', 'Часов/неделю', 'Форма контроля', 'Кафедра'])
         self.subjects_tree.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.subjects_tree.setSelectionBehavior(QAbstractItemView.SelectRows)
         layout.addWidget(self.subjects_tree, 1)
-
         self.notebook.addTab(tab, "📚 Предметы")
-
     def create_schedule_tab(self):
         tab = QWidget()
         layout = QVBoxLayout(tab)
-
         # Фрейм для фильтров
         filter_frame = QFrame()
         filter_layout = QHBoxLayout(filter_frame)
         filter_layout.addWidget(QLabel("Фильтры:"))
-
         # Неделя
         week_layout = QHBoxLayout()
         week_layout.addWidget(QLabel("Неделя:"))
@@ -519,7 +470,6 @@ class ScheduleApp(QMainWindow):
         self.week_var.currentIndexChanged.connect(self.filter_schedule)
         week_layout.addWidget(self.week_var)
         filter_layout.addLayout(week_layout)
-
         # Группа
         group_layout = QHBoxLayout()
         group_layout.addWidget(QLabel("Группа:"))
@@ -527,7 +477,6 @@ class ScheduleApp(QMainWindow):
         self.group_filter_var.addItem("")
         group_layout.addWidget(self.group_filter_var)
         filter_layout.addLayout(group_layout)
-
         # Преподаватель
         teacher_layout = QHBoxLayout()
         teacher_layout.addWidget(QLabel("Преподаватель:"))
@@ -535,7 +484,6 @@ class ScheduleApp(QMainWindow):
         self.teacher_filter_var.addItem("")
         teacher_layout.addWidget(self.teacher_filter_var)
         filter_layout.addLayout(teacher_layout)
-
         # Аудитория
         classroom_layout = QHBoxLayout()
         classroom_layout.addWidget(QLabel("Аудитория:"))
@@ -543,15 +491,12 @@ class ScheduleApp(QMainWindow):
         self.classroom_filter_var.addItem("")
         classroom_layout.addWidget(self.classroom_filter_var)
         filter_layout.addLayout(classroom_layout)
-
         # Кнопка обновления
         refresh_btn = QPushButton("🔄 Обновить")
         refresh_btn.clicked.connect(self.filter_schedule)
         filter_layout.addWidget(refresh_btn)
-
         filter_layout.addStretch()
         layout.addWidget(filter_frame)
-
         # Кнопки управления
         schedule_buttons_frame = QFrame()
         buttons_layout = QHBoxLayout(schedule_buttons_frame)
@@ -570,25 +515,36 @@ class ScheduleApp(QMainWindow):
             buttons_layout.addWidget(btn)
         buttons_layout.addStretch()
         layout.addWidget(schedule_buttons_frame)
-
         # Таблица расписания
-        self.schedule_tree = QTableWidget(0, 8)
-        self.schedule_tree.setHorizontalHeaderLabels(['Время', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'])
-        self.schedule_tree.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.schedule_tree.verticalHeader().setDefaultSectionSize(100) # Увеличена высота строки
-        self.schedule_tree.setSelectionBehavior(QAbstractItemView.SelectRows)
-        layout.addWidget(self.schedule_tree, 1)
-
+        # Создаем модель данных
+        self.schedule_model = QStandardItemModel()
+        # Устанавливаем заголовки столбцов
+        self.schedule_model.setHorizontalHeaderLabels(['Время', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'])
+        
+        # Создаем прокси-модель для сортировки
+        self.schedule_proxy_model = TimeSortProxyModel(self)
+        self.schedule_proxy_model.setSourceModel(self.schedule_model)
+        
+        # Создаем виджет таблицы
+        self.schedule_view = QTableView()
+        self.schedule_view.setModel(self.schedule_proxy_model)
+        # Устанавливаем ширину столбца "Время"
+        self.schedule_view.setColumnWidth(0, 100)
+        # Увеличиваем высоту строк
+        self.schedule_view.verticalHeader().setDefaultSectionSize(100)
+        # Разрешаем выбор строк
+        self.schedule_view.setSelectionBehavior(QAbstractItemView.SelectItems)
+        # Показываем только первый столбец (время) в вертикальном заголовке
+        # Разрешаем растягивание столбцов
+        self.schedule_view.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        layout.addWidget(self.schedule_view, 1)
         self.notebook.addTab(tab, "📅 Расписание")
-
     def create_reports_tab(self):
         tab = QWidget()
         layout = QVBoxLayout(tab)
-
         # Вкладки отчетов
         reports_notebook = QTabWidget()
         layout.addWidget(reports_notebook, 1)
-
         # Отчет по нагрузке преподавателей
         teacher_report_frame = QWidget()
         teacher_report_layout = QVBoxLayout(teacher_report_frame)
@@ -597,7 +553,6 @@ class ScheduleApp(QMainWindow):
         self.teacher_report_tree.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         teacher_report_layout.addWidget(self.teacher_report_tree, 1)
         reports_notebook.addTab(teacher_report_frame, "👨‍🏫 Нагрузка преподавателей")
-
         # Отчет по нагрузке групп
         group_report_frame = QWidget()
         group_report_layout = QVBoxLayout(group_report_frame)
@@ -606,7 +561,6 @@ class ScheduleApp(QMainWindow):
         self.group_report_tree.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         group_report_layout.addWidget(self.group_report_tree, 1)
         reports_notebook.addTab(group_report_frame, "👥 Нагрузка групп")
-
         # Отчет по конфликтам
         conflicts_frame = QWidget()
         conflicts_layout = QVBoxLayout(conflicts_frame)
@@ -614,7 +568,6 @@ class ScheduleApp(QMainWindow):
         self.conflicts_text.setReadOnly(True)
         conflicts_layout.addWidget(self.conflicts_text, 1)
         reports_notebook.addTab(conflicts_frame, "⚠️ Конфликты")
-
         # Текстовый отчет
         summary_frame = QWidget()
         summary_layout = QVBoxLayout(summary_frame)
@@ -622,13 +575,10 @@ class ScheduleApp(QMainWindow):
         self.summary_text.setReadOnly(True)
         summary_layout.addWidget(self.summary_text, 1)
         reports_notebook.addTab(summary_frame, "📋 Сводка")
-
         self.notebook.addTab(tab, "📈 Отчеты")
-
     def create_holidays_tab(self):
         tab = QWidget()
         layout = QVBoxLayout(tab)
-
         # Кнопки
         btn_frame = QFrame()
         btn_layout = QHBoxLayout(btn_frame)
@@ -640,20 +590,16 @@ class ScheduleApp(QMainWindow):
         btn_layout.addWidget(delete_btn)
         btn_layout.addStretch()
         layout.addWidget(btn_frame)
-
         # Таблица
         self.holidays_tree = QTableWidget(0, 3)
         self.holidays_tree.setHorizontalHeaderLabels(['Дата', 'Название', 'Тип'])
         self.holidays_tree.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.holidays_tree.setSelectionBehavior(QAbstractItemView.SelectRows)
         layout.addWidget(self.holidays_tree, 1)
-
         self.notebook.addTab(tab, "🎉 Праздники")
-
     def create_archive_tab(self):
         tab = QWidget()
         layout = QVBoxLayout(tab)
-
         # Кнопки
         btn_frame = QFrame()
         btn_layout = QHBoxLayout(btn_frame)
@@ -671,16 +617,13 @@ class ScheduleApp(QMainWindow):
         btn_layout.addStretch()
         btn_layout.addWidget(export_btn)
         layout.addWidget(btn_frame)
-
         # Таблица
         self.archive_tree = QTableWidget(0, 7)
         self.archive_tree.setHorizontalHeaderLabels(['Имя файла', 'Дата создания', 'Группы', 'Преподаватели', 'Аудитории', 'Предметы', 'Занятий'])
         self.archive_tree.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.archive_tree.setSelectionBehavior(QAbstractItemView.SelectRows)
         layout.addWidget(self.archive_tree, 1)
-
         self.notebook.addTab(tab, "💾 Архив расписаний")
-
     # --- Загрузка данных в таблицы ---
     def load_groups_data(self):
         self.groups_tree.setRowCount(0)
@@ -693,13 +636,11 @@ class ScheduleApp(QMainWindow):
             self.groups_tree.setItem(row, 3, QTableWidgetItem(str(group.get('students', 0))))
             self.groups_tree.setItem(row, 4, QTableWidgetItem(group.get('course', '')))
             self.groups_tree.setItem(row, 5, QTableWidgetItem(group.get('specialty', '')))
-
         # Обновляем комбобокс фильтра групп
         self.group_filter_var.clear()
         self.group_filter_var.addItem("")
         for group in self.groups:
             self.group_filter_var.addItem(group['name'])
-
     def load_teachers_data(self):
         self.teachers_tree.setRowCount(0)
         for teacher in self.teachers:
@@ -711,13 +652,11 @@ class ScheduleApp(QMainWindow):
             self.teachers_tree.setItem(row, 3, QTableWidgetItem(str(teacher.get('max_hours', 0))))
             self.teachers_tree.setItem(row, 4, QTableWidgetItem(teacher.get('qualification', '')))
             self.teachers_tree.setItem(row, 5, QTableWidgetItem(str(teacher.get('experience', 0))))
-
         # Обновляем комбобокс фильтра преподавателей
         self.teacher_filter_var.clear()
         self.teacher_filter_var.addItem("")
         for teacher in self.teachers:
             self.teacher_filter_var.addItem(teacher['name'])
-
     def load_classrooms_data(self):
         self.classrooms_tree.setRowCount(0)
         for classroom in self.classrooms:
@@ -729,13 +668,11 @@ class ScheduleApp(QMainWindow):
             self.classrooms_tree.setItem(row, 3, QTableWidgetItem(classroom.get('type', 'обычная')))
             self.classrooms_tree.setItem(row, 4, QTableWidgetItem(classroom.get('equipment', '')))
             self.classrooms_tree.setItem(row, 5, QTableWidgetItem(classroom.get('location', '')))
-
         # Обновляем комбобокс фильтра аудиторий
         self.classroom_filter_var.clear()
         self.classroom_filter_var.addItem("")
         for classroom in self.classrooms:
             self.classroom_filter_var.addItem(classroom['name'])
-
     def load_subjects_data(self):
         self.subjects_tree.setRowCount(0)
         for subject in self.subjects:
@@ -747,7 +684,6 @@ class ScheduleApp(QMainWindow):
             self.subjects_tree.setItem(row, 3, QTableWidgetItem(str(subject.get('hours_per_week', 0))))
             self.subjects_tree.setItem(row, 4, QTableWidgetItem(subject.get('assessment', '')))
             self.subjects_tree.setItem(row, 5, QTableWidgetItem(subject.get('department', '')))
-
     def load_holidays_data(self):
         self.holidays_tree.setRowCount(0)
         for holiday in self.holidays:
@@ -756,14 +692,12 @@ class ScheduleApp(QMainWindow):
             self.holidays_tree.setItem(row, 0, QTableWidgetItem(holiday.get('date', '')))
             self.holidays_tree.setItem(row, 1, QTableWidgetItem(holiday.get('name', '')))
             self.holidays_tree.setItem(row, 2, QTableWidgetItem(holiday.get('type', 'Государственный')))
-
     # --- Методы добавления/редактирования/удаления ---
     def add_group(self):
         dialog = QDialog(self)
         dialog.setWindowTitle("Добавить группу")
         dialog.setModal(True)
         dialog.resize(400, 300)
-
         form_layout = QFormLayout(dialog)
         name_entry = QLineEdit()
         type_combo = QComboBox()
@@ -773,20 +707,16 @@ class ScheduleApp(QMainWindow):
         students_spin.setValue(25)
         course_entry = QLineEdit()
         specialty_entry = QLineEdit()
-
         form_layout.addRow("Название:", name_entry)
         form_layout.addRow("Тип:", type_combo)
         form_layout.addRow("Студентов:", students_spin)
         form_layout.addRow("Курс:", course_entry)
         form_layout.addRow("Специальность:", specialty_entry)
-
         button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         button_box.accepted.connect(lambda: self._save_group(name_entry.text(), type_combo.currentText(), students_spin.value(), course_entry.text(), specialty_entry.text(), dialog))
         button_box.rejected.connect(dialog.reject)
         form_layout.addRow(button_box)
-
         dialog.exec_()
-
     def _save_group(self, name, group_type, students, course, specialty, dialog):
         if not name:
             QMessageBox.warning(self, "Предупреждение", "Введите название группы")
@@ -803,24 +733,20 @@ class ScheduleApp(QMainWindow):
         self.load_groups_data()
         self.create_backup()
         dialog.accept()
-
     def edit_group(self):
         selected_items = self.groups_tree.selectedItems()
         if not selected_items:
             QMessageBox.information(self, "Информация", "Выберите группу для редактирования")
             return
-
         row = selected_items[0].row()
         group_id = int(self.groups_tree.item(row, 0).text())
         group = next((g for g in self.groups if g['id'] == group_id), None)
         if not group:
             return
-
         dialog = QDialog(self)
         dialog.setWindowTitle("Редактировать группу")
         dialog.setModal(True)
         dialog.resize(400, 300)
-
         form_layout = QFormLayout(dialog)
         name_entry = QLineEdit(group['name'])
         type_combo = QComboBox()
@@ -831,20 +757,16 @@ class ScheduleApp(QMainWindow):
         students_spin.setValue(group.get('students', 25))
         course_entry = QLineEdit(group.get('course', ''))
         specialty_entry = QLineEdit(group.get('specialty', ''))
-
         form_layout.addRow("Название:", name_entry)
         form_layout.addRow("Тип:", type_combo)
         form_layout.addRow("Студентов:", students_spin)
         form_layout.addRow("Курс:", course_entry)
         form_layout.addRow("Специальность:", specialty_entry)
-
         button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         button_box.accepted.connect(lambda: self._update_group(group, name_entry.text(), type_combo.currentText(), students_spin.value(), course_entry.text(), specialty_entry.text(), dialog))
         button_box.rejected.connect(dialog.reject)
         form_layout.addRow(button_box)
-
         dialog.exec_()
-
     def _update_group(self, group, name, group_type, students, course, specialty, dialog):
         if not name:
             QMessageBox.warning(self, "Предупреждение", "Введите название группы")
@@ -857,26 +779,22 @@ class ScheduleApp(QMainWindow):
         self.load_groups_data()
         self.create_backup()
         dialog.accept()
-
     def delete_group(self):
         selected_items = self.groups_tree.selectedItems()
         if not selected_items:
             QMessageBox.information(self, "Информация", "Выберите группу для удаления")
             return
-
         if QMessageBox.question(self, "Подтверждение", "Удалить выбранную группу?") == QMessageBox.Yes:
             row = selected_items[0].row()
             group_id = int(self.groups_tree.item(row, 0).text())
             self.groups = [g for g in self.groups if g['id'] != group_id]
             self.load_groups_data()
             self.create_backup()
-
     def add_teacher(self):
         dialog = QDialog(self)
         dialog.setWindowTitle("Добавить преподавателя")
         dialog.setModal(True)
         dialog.resize(450, 500)
-
         form_layout = QFormLayout(dialog)
         name_entry = QLineEdit()
         subjects_entry = QLineEdit()
@@ -893,7 +811,6 @@ class ScheduleApp(QMainWindow):
         max_lessons_per_day_spin = QSpinBox()
         max_lessons_per_day_spin.setRange(1, 12)
         max_lessons_per_day_spin.setValue(6)
-
         form_layout.addRow("ФИО:", name_entry)
         form_layout.addRow("Предметы (через запятую):", subjects_entry)
         form_layout.addRow("Макс. часов/неделю:", max_hours_spin)
@@ -903,7 +820,6 @@ class ScheduleApp(QMainWindow):
         form_layout.addRow("Запрещенные дни:", forbidden_days_entry)
         form_layout.addRow("Предпочтительные дни:", preferred_days_entry)
         form_layout.addRow("Макс. пар в день:", max_lessons_per_day_spin)
-
         button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         button_box.accepted.connect(lambda: self._save_teacher(
             name_entry.text(), subjects_entry.text(), max_hours_spin.value(),
@@ -911,9 +827,7 @@ class ScheduleApp(QMainWindow):
             forbidden_days_entry.text(), preferred_days_entry.text(), max_lessons_per_day_spin.value(), dialog))
         button_box.rejected.connect(dialog.reject)
         form_layout.addRow(button_box)
-
         dialog.exec_()
-
     def _save_teacher(self, name, subjects, max_hours, qualification, experience, contacts,
                      forbidden_days, preferred_days, max_lessons_per_day, dialog):
         if not name:
@@ -935,24 +849,20 @@ class ScheduleApp(QMainWindow):
         self.load_teachers_data()
         self.create_backup()
         dialog.accept()
-
     def edit_teacher(self):
         selected_items = self.teachers_tree.selectedItems()
         if not selected_items:
             QMessageBox.information(self, "Информация", "Выберите преподавателя для редактирования")
             return
-
         row = selected_items[0].row()
         teacher_id = int(self.teachers_tree.item(row, 0).text())
         teacher = next((t for t in self.teachers if t['id'] == teacher_id), None)
         if not teacher:
             return
-
         dialog = QDialog(self)
         dialog.setWindowTitle("Редактировать преподавателя")
         dialog.setModal(True)
         dialog.resize(450, 500)
-
         form_layout = QFormLayout(dialog)
         name_entry = QLineEdit(teacher['name'])
         subjects_entry = QLineEdit(teacher.get('subjects', ''))
@@ -969,7 +879,6 @@ class ScheduleApp(QMainWindow):
         max_lessons_per_day_spin = QSpinBox()
         max_lessons_per_day_spin.setRange(1, 12)
         max_lessons_per_day_spin.setValue(teacher.get('max_lessons_per_day', 6))
-
         form_layout.addRow("ФИО:", name_entry)
         form_layout.addRow("Предметы (через запятую):", subjects_entry)
         form_layout.addRow("Макс. часов/неделю:", max_hours_spin)
@@ -979,7 +888,6 @@ class ScheduleApp(QMainWindow):
         form_layout.addRow("Запрещенные дни:", forbidden_days_entry)
         form_layout.addRow("Предпочтительные дни:", preferred_days_entry)
         form_layout.addRow("Макс. пар в день:", max_lessons_per_day_spin)
-
         button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         button_box.accepted.connect(lambda: self._update_teacher(
             teacher, name_entry.text(), subjects_entry.text(), max_hours_spin.value(),
@@ -987,9 +895,7 @@ class ScheduleApp(QMainWindow):
             forbidden_days_entry.text(), preferred_days_entry.text(), max_lessons_per_day_spin.value(), dialog))
         button_box.rejected.connect(dialog.reject)
         form_layout.addRow(button_box)
-
         dialog.exec_()
-
     def _update_teacher(self, teacher, name, subjects, max_hours, qualification, experience, contacts,
                        forbidden_days, preferred_days, max_lessons_per_day, dialog):
         if not name:
@@ -1007,20 +913,17 @@ class ScheduleApp(QMainWindow):
         self.load_teachers_data()
         self.create_backup()
         dialog.accept()
-
     def delete_teacher(self):
         selected_items = self.teachers_tree.selectedItems()
         if not selected_items:
             QMessageBox.information(self, "Информация", "Выберите преподавателя для удаления")
             return
-
         if QMessageBox.question(self, "Подтверждение", "Удалить выбранного преподавателя?") == QMessageBox.Yes:
             row = selected_items[0].row()
             teacher_id = int(self.teachers_tree.item(row, 0).text())
             self.teachers = [t for t in self.teachers if t['id'] != teacher_id]
             self.load_teachers_data()
             self.create_backup()
-
     def update_all_experience(self):
         if QMessageBox.question(self, "Подтверждение", "Вы уверены, что хотите увеличить стаж всех преподавателей на 1 год?") == QMessageBox.Yes:
             updated_count = 0
@@ -1030,13 +933,11 @@ class ScheduleApp(QMainWindow):
             self.load_teachers_data()
             self.create_backup()
             QMessageBox.information(self, "Успех", f"Стаж обновлен у {updated_count} преподавателей")
-
     def add_classroom(self):
         dialog = QDialog(self)
         dialog.setWindowTitle("Добавить аудиторию")
         dialog.setModal(True)
         dialog.resize(400, 300)
-
         form_layout = QFormLayout(dialog)
         name_entry = QLineEdit()
         capacity_spin = QSpinBox()
@@ -1046,22 +947,18 @@ class ScheduleApp(QMainWindow):
         type_combo.addItems(["обычная", "компьютерный класс", "спортзал", "лаборатория", "специализированная"])
         equipment_entry = QLineEdit()
         location_entry = QLineEdit()
-
         form_layout.addRow("Номер:", name_entry)
         form_layout.addRow("Вместимость:", capacity_spin)
         form_layout.addRow("Тип:", type_combo)
         form_layout.addRow("Оборудование:", equipment_entry)
         form_layout.addRow("Расположение:", location_entry)
-
         button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         button_box.accepted.connect(lambda: self._save_classroom(
             name_entry.text(), capacity_spin.value(), type_combo.currentText(),
             equipment_entry.text(), location_entry.text(), dialog))
         button_box.rejected.connect(dialog.reject)
         form_layout.addRow(button_box)
-
         dialog.exec_()
-
     def _save_classroom(self, name, capacity, room_type, equipment, location, dialog):
         if not name:
             QMessageBox.warning(self, "Предупреждение", "Введите номер аудитории")
@@ -1078,24 +975,20 @@ class ScheduleApp(QMainWindow):
         self.load_classrooms_data()
         self.create_backup()
         dialog.accept()
-
     def edit_classroom(self):
         selected_items = self.classrooms_tree.selectedItems()
         if not selected_items:
             QMessageBox.information(self, "Информация", "Выберите аудиторию для редактирования")
             return
-
         row = selected_items[0].row()
         classroom_id = int(self.classrooms_tree.item(row, 0).text())
         classroom = next((c for c in self.classrooms if c['id'] == classroom_id), None)
         if not classroom:
             return
-
         dialog = QDialog(self)
         dialog.setWindowTitle("Редактировать аудиторию")
         dialog.setModal(True)
         dialog.resize(400, 300)
-
         form_layout = QFormLayout(dialog)
         name_entry = QLineEdit(classroom['name'])
         capacity_spin = QSpinBox()
@@ -1106,22 +999,18 @@ class ScheduleApp(QMainWindow):
         type_combo.setCurrentText(classroom.get('type', 'обычная'))
         equipment_entry = QLineEdit(classroom.get('equipment', ''))
         location_entry = QLineEdit(classroom.get('location', ''))
-
         form_layout.addRow("Номер:", name_entry)
         form_layout.addRow("Вместимость:", capacity_spin)
         form_layout.addRow("Тип:", type_combo)
         form_layout.addRow("Оборудование:", equipment_entry)
         form_layout.addRow("Расположение:", location_entry)
-
         button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         button_box.accepted.connect(lambda: self._update_classroom(
             classroom, name_entry.text(), capacity_spin.value(), type_combo.currentText(),
             equipment_entry.text(), location_entry.text(), dialog))
         button_box.rejected.connect(dialog.reject)
         form_layout.addRow(button_box)
-
         dialog.exec_()
-
     def _update_classroom(self, classroom, name, capacity, room_type, equipment, location, dialog):
         if not name:
             QMessageBox.warning(self, "Предупреждение", "Введите номер аудитории")
@@ -1134,26 +1023,22 @@ class ScheduleApp(QMainWindow):
         self.load_classrooms_data()
         self.create_backup()
         dialog.accept()
-
     def delete_classroom(self):
         selected_items = self.classrooms_tree.selectedItems()
         if not selected_items:
             QMessageBox.information(self, "Информация", "Выберите аудиторию для удаления")
             return
-
         if QMessageBox.question(self, "Подтверждение", "Удалить выбранную аудиторию?") == QMessageBox.Yes:
             row = selected_items[0].row()
             classroom_id = int(self.classrooms_tree.item(row, 0).text())
             self.classrooms = [c for c in self.classrooms if c['id'] != classroom_id]
             self.load_classrooms_data()
             self.create_backup()
-
     def add_subject(self):
         dialog = QDialog(self)
         dialog.setWindowTitle("Добавить предмет")
         dialog.setModal(True)
         dialog.resize(450, 350)
-
         form_layout = QFormLayout(dialog)
         name_entry = QLineEdit()
         group_type_combo = QComboBox()
@@ -1165,23 +1050,19 @@ class ScheduleApp(QMainWindow):
         assessment_combo.addItems(["экзамен", "зачет", "зачет с оценкой", "курсовая работа", "дифференцированный зачет"])
         department_entry = QLineEdit()
         description_entry = QLineEdit()
-
         form_layout.addRow("Название:", name_entry)
         form_layout.addRow("Тип группы:", group_type_combo)
         form_layout.addRow("Часов/неделю:", hours_spin)
         form_layout.addRow("Форма контроля:", assessment_combo)
         form_layout.addRow("Кафедра:", department_entry)
         form_layout.addRow("Описание:", description_entry)
-
         button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         button_box.accepted.connect(lambda: self._save_subject(
             name_entry.text(), group_type_combo.currentText(), hours_spin.value(),
             assessment_combo.currentText(), department_entry.text(), description_entry.text(), dialog))
         button_box.rejected.connect(dialog.reject)
         form_layout.addRow(button_box)
-
         dialog.exec_()
-
     def _save_subject(self, name, group_type, hours_per_week, assessment, department, description, dialog):
         if not name:
             QMessageBox.warning(self, "Предупреждение", "Введите название предмета")
@@ -1199,24 +1080,20 @@ class ScheduleApp(QMainWindow):
         self.load_subjects_data()
         self.create_backup()
         dialog.accept()
-
     def edit_subject(self):
         selected_items = self.subjects_tree.selectedItems()
         if not selected_items:
             QMessageBox.information(self, "Информация", "Выберите предмет для редактирования")
             return
-
         row = selected_items[0].row()
         subject_id = int(self.subjects_tree.item(row, 0).text())
         subject = next((s for s in self.subjects if s['id'] == subject_id), None)
         if not subject:
             return
-
         dialog = QDialog(self)
         dialog.setWindowTitle("Редактировать предмет")
         dialog.setModal(True)
         dialog.resize(450, 350)
-
         form_layout = QFormLayout(dialog)
         name_entry = QLineEdit(subject['name'])
         group_type_combo = QComboBox()
@@ -1230,23 +1107,19 @@ class ScheduleApp(QMainWindow):
         assessment_combo.setCurrentText(subject.get('assessment', 'экзамен'))
         department_entry = QLineEdit(subject.get('department', ''))
         description_entry = QLineEdit(subject.get('description', ''))
-
         form_layout.addRow("Название:", name_entry)
         form_layout.addRow("Тип группы:", group_type_combo)
         form_layout.addRow("Часов/неделю:", hours_spin)
         form_layout.addRow("Форма контроля:", assessment_combo)
         form_layout.addRow("Кафедра:", department_entry)
         form_layout.addRow("Описание:", description_entry)
-
         button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         button_box.accepted.connect(lambda: self._update_subject(
             subject, name_entry.text(), group_type_combo.currentText(), hours_spin.value(),
             assessment_combo.currentText(), department_entry.text(), description_entry.text(), dialog))
         button_box.rejected.connect(dialog.reject)
         form_layout.addRow(button_box)
-
         dialog.exec_()
-
     def _update_subject(self, subject, name, group_type, hours_per_week, assessment, department, description, dialog):
         if not name:
             QMessageBox.warning(self, "Предупреждение", "Введите название предмета")
@@ -1260,20 +1133,17 @@ class ScheduleApp(QMainWindow):
         self.load_subjects_data()
         self.create_backup()
         dialog.accept()
-
     def delete_subject(self):
         selected_items = self.subjects_tree.selectedItems()
         if not selected_items:
             QMessageBox.information(self, "Информация", "Выберите предмет для удаления")
             return
-
         if QMessageBox.question(self, "Подтверждение", "Удалить выбранный предмет?") == QMessageBox.Yes:
             row = selected_items[0].row()
             subject_id = int(self.subjects_tree.item(row, 0).text())
             self.subjects = [s for s in self.subjects if s['id'] != subject_id]
             self.load_subjects_data()
             self.create_backup()
-
     # --- Генерация расписания ---
     def generate_schedule_thread(self):
         self.progress.show()
@@ -1281,7 +1151,6 @@ class ScheduleApp(QMainWindow):
         # В реальном приложении здесь запускался бы отдельный поток.
         # Для простоты примера вызываем напрямую.
         self.generate_schedule()
-
     def generate_schedule(self):
         try:
             if not self.groups:
@@ -1292,18 +1161,15 @@ class ScheduleApp(QMainWindow):
                 raise Exception("Необходимо добавить хотя бы одного преподавателя")
             if not self.classrooms:
                 raise Exception("Необходимо добавить хотя бы одну аудиторию")
-
             self.settings['days_per_week'] = self.days_var.value()
             self.settings['lessons_per_day'] = self.lessons_var.value()
             self.settings['weeks'] = self.weeks_var.value()
-
             holiday_dates = []
             for h in self.holidays:
                 try:
                     holiday_dates.append(datetime.strptime(h['date'], '%Y-%m-%d').date())
                 except ValueError:
                     continue
-
             days = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'][:self.settings['days_per_week']]
             start_date = datetime.strptime(self.settings['start_date'], '%Y-%m-%d').date()
             all_dates = []
@@ -1312,12 +1178,10 @@ class ScheduleApp(QMainWindow):
                     current_date = start_date + timedelta(weeks=week, days=day_index)
                     if current_date not in holiday_dates:
                         all_dates.append((week+1, day_name, current_date))
-
             schedule_data = []
             lesson_id = 1
             bell_schedule_str = self.settings.get('bell_schedule', '8:00-8:45,8:55-9:40,9:50-10:35,10:45-11:30,11:40-12:25,12:35-13:20')
             times = [slot.strip() for slot in bell_schedule_str.split(',')]
-
             for week_num, day_name, _ in all_dates:
                 for time_slot in times:
                     for group in self.groups:
@@ -1337,21 +1201,17 @@ class ScheduleApp(QMainWindow):
                             'status': 'свободно'
                         })
                         lesson_id += 1
-
             self.schedule = pd.DataFrame(schedule_data)
             self.assign_subjects_to_groups()
             self.assign_teachers_and_classrooms()
             self.on_schedule_generated()
-
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Ошибка генерации расписания: {str(e)}")
             self.progress.hide()
             self.statusBar.showMessage("Ошибка генерации")
-
     def assign_subjects_to_groups(self):
         if not self.subjects or not self.groups:
             return
-
         for group in self.groups:
             group_subjects = [s for s in self.subjects if s.get('group_type') in [group['type'], 'общий']]
             for subject in group_subjects:
@@ -1368,7 +1228,6 @@ class ScheduleApp(QMainWindow):
                         self.schedule.loc[slot, 'subject_id'] = subject['id']
                         self.schedule.loc[slot, 'subject_name'] = subject['name']
                         self.schedule.loc[slot, 'status'] = 'запланировано'
-
     def assign_teachers_and_classrooms(self):
         for idx, lesson in self.schedule.iterrows():
             if lesson['status'] == 'запланировано':
@@ -1384,7 +1243,6 @@ class ScheduleApp(QMainWindow):
                             self.schedule.loc[idx, 'classroom_id'] = classroom['id']
                             self.schedule.loc[idx, 'classroom_name'] = classroom['name']
                         self.schedule.loc[idx, 'status'] = 'подтверждено'
-
     def on_schedule_generated(self):
         self.progress.hide()
         self.statusBar.showMessage("Расписание сгенерировано")
@@ -1392,17 +1250,19 @@ class ScheduleApp(QMainWindow):
         self.filter_schedule()
         self.update_reports()
         self.create_backup()
-
     # --- Фильтрация расписания ---
     def filter_schedule(self):
-        self.schedule_tree.setRowCount(0)
-
+        # Очистка модели
+        self.schedule_model.clear()
+        # Устанавливаем заголовки снова
+        self.schedule_model.setHorizontalHeaderLabels(['Время', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'])
+        
         week_text = self.week_var.currentText()
         week_num = int(week_text.split()[1]) if week_text and "Неделя" in week_text else 1
         group_name = self.group_filter_var.currentText()
         teacher_name = self.teacher_filter_var.currentText()
         classroom_name = self.classroom_filter_var.currentText()
-
+        
         filtered_schedule = self.schedule.copy()
         if not filtered_schedule.empty and 'week' in filtered_schedule.columns:
             if week_num:
@@ -1413,14 +1273,17 @@ class ScheduleApp(QMainWindow):
                 filtered_schedule = filtered_schedule[filtered_schedule['teacher_name'] == teacher_name]
             if classroom_name:
                 filtered_schedule = filtered_schedule[filtered_schedule['classroom_name'] == classroom_name]
-
+            
             if not filtered_schedule.empty:
                 days = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'][:self.settings['days_per_week']]
                 times = sorted(filtered_schedule['time'].unique())
+                
+                # Добавляем временные интервалы в первую колонку
                 for time_slot in times:
-                    row = self.schedule_tree.rowCount()
-                    self.schedule_tree.insertRow(row)
-                    self.schedule_tree.setItem(row, 0, QTableWidgetItem(time_slot))
+                    time_item = QStandardItem(time_slot)
+                    self.schedule_model.appendRow([time_item])
+                    
+                    # Добавляем данные для каждого дня недели
                     for col, day in enumerate(days, 1):
                         lesson = filtered_schedule[
                             (filtered_schedule['time'] == time_slot) &
@@ -1430,33 +1293,39 @@ class ScheduleApp(QMainWindow):
                         if not lesson.empty:
                             lesson_info = lesson.iloc[0]
                             text = f"{lesson_info['group_name']}\n{lesson_info['subject_name']}\n{lesson_info['teacher_name']}\n{lesson_info['classroom_name']}"
-                            self.schedule_tree.setItem(row, col, QTableWidgetItem(text))
+                            item = QStandardItem(text)
+                            item.setTextAlignment(Qt.AlignCenter)
+                            self.schedule_model.setItem(self.schedule_model.rowCount()-1, col, item)
             else:
                 self.show_empty_schedule()
         else:
             self.show_empty_schedule()
 
+        # Применяем сортировку
+        self.schedule_proxy_model.sort(0, Qt.AscendingOrder)  # Сортировка по первому столбцу (времени)
+
     def show_empty_schedule(self):
+        # Очистка модели
+        self.schedule_model.clear()
+        self.schedule_model.setHorizontalHeaderLabels(['Время', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'])
+        
         times = [f"{8+i}:00-{8+i}:45" for i in range(self.settings['lessons_per_day'])]
         days = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'][:self.settings['days_per_week']]
+        
         for time_slot in times:
-            row = self.schedule_tree.rowCount()
-            self.schedule_tree.insertRow(row)
-            self.schedule_tree.setItem(row, 0, QTableWidgetItem(time_slot))
-            for i in range(1, len(days) + 1):
-                self.schedule_tree.setItem(row, i, QTableWidgetItem(""))
-
+            row_items = [QStandardItem(time_slot)]
+            for _ in range(len(days)):
+                row_items.append(QStandardItem(""))
+            self.schedule_model.appendRow(row_items)
     # --- Ручное управление занятиями ---
     def add_lesson(self):
         if not self.groups or not self.subjects or not self.teachers or not self.classrooms:
             QMessageBox.warning(self, "Предупреждение", "Для добавления занятия необходимо, чтобы были созданы хотя бы одна группа, один предмет, один преподаватель и одна аудитория.")
             return
-
         dialog = QDialog(self)
         dialog.setWindowTitle("Добавить занятие")
         dialog.setModal(True)
         dialog.resize(500, 400)
-
         form_layout = QFormLayout(dialog)
         week_var = QComboBox()
         week_var.addItems([str(i) for i in range(1, self.settings['weeks'] + 1)])
@@ -1472,7 +1341,6 @@ class ScheduleApp(QMainWindow):
         teacher_var.addItems([t['name'] for t in self.teachers])
         classroom_var = QComboBox()
         classroom_var.addItems([c['name'] for c in self.classrooms])
-
         form_layout.addRow("Неделя:", week_var)
         form_layout.addRow("День недели:", day_var)
         form_layout.addRow("Время:", time_var)
@@ -1480,7 +1348,6 @@ class ScheduleApp(QMainWindow):
         form_layout.addRow("Предмет:", subject_var)
         form_layout.addRow("Преподаватель:", teacher_var)
         form_layout.addRow("Аудитория:", classroom_var)
-
         button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         button_box.accepted.connect(lambda: self._save_lesson(
             week_var.currentText(), day_var.currentText(), time_var.currentText(),
@@ -1488,19 +1355,15 @@ class ScheduleApp(QMainWindow):
             classroom_var.currentText(), dialog))
         button_box.rejected.connect(dialog.reject)
         form_layout.addRow(button_box)
-
         dialog.exec_()
-
     def _save_lesson(self, week, day, time, group_name, subject_name, teacher_name, classroom_name, dialog):
         selected_group = next((g for g in self.groups if g['name'] == group_name), None)
         selected_subject = next((s for s in self.subjects if s['name'] == subject_name), None)
         selected_teacher = next((t for t in self.teachers if t['name'] == teacher_name), None)
         selected_classroom = next((c for c in self.classrooms if c['name'] == classroom_name), None)
-
         if not all([selected_group, selected_subject, selected_teacher, selected_classroom]):
             QMessageBox.critical(self, "Ошибка", "Не удалось найти выбранные элементы в базе данных")
             return
-
         existing_lesson = self.schedule[
             (self.schedule['week'] == int(week)) &
             (self.schedule['day'] == day) &
@@ -1511,7 +1374,6 @@ class ScheduleApp(QMainWindow):
         if not existing_lesson.empty:
             if QMessageBox.question(self, "Подтверждение", "В выбранное время у этой группы уже есть занятие. Заменить его?") != QMessageBox.Yes:
                 return
-
         target_row = self.schedule[
             (self.schedule['week'] == int(week)) &
             (self.schedule['day'] == day) &
@@ -1534,124 +1396,346 @@ class ScheduleApp(QMainWindow):
             dialog.accept()
         else:
             QMessageBox.critical(self, "Ошибка", "Не удалось найти подходящий слот в расписании")
-
     def edit_lesson(self):
-        selected_items = self.schedule_tree.selectedItems()
-        if not selected_items:
+        """Редактирует выбранное занятие."""
+        selected_indexes = self.schedule_view.selectionModel().selectedIndexes()
+        if not selected_indexes:
             QMessageBox.information(self, "Информация", "Выберите занятие в таблице для редактирования")
             return
-
-        # В этом упрощенном примере редактирование не реализовано полностью.
-        # Для полноценного редактирования нужно определить, какое именно занятие выбрано (по неделе, дню, времени, группе).
-        # Это требует более сложной логики, чем в Tkinter-версии.
-        QMessageBox.information(self, "Информация", "Редактирование занятия пока не реализовано в Qt-версии.")
-
+        
+        # Получаем индекс выбранной ячейки
+        selected_index = selected_indexes[0]
+        row = selected_index.row()
+        col = selected_index.column()
+        
+        # Первый столбец (0) - это время. Если выбран он, то удалять нечего.
+        if col == 0:
+            QMessageBox.warning(self, "Предупреждение", "Выберите ячейку с занятием (не время)")
+            return
+        
+        # Получаем время из первого столбца той же строки
+        time_index = self.schedule_proxy_model.index(row, 0)
+        time_slot = self.schedule_proxy_model.data(time_index)
+        if not time_slot:
+            QMessageBox.warning(self, "Ошибка", "Не удалось определить время занятия")
+            return
+        
+        # Получаем день недели из заголовка столбца
+        day_header = self.schedule_proxy_model.headerData(col, Qt.Horizontal, Qt.DisplayRole)
+        if not day_header:
+            QMessageBox.warning(self, "Ошибка", "Не удалось определить день недели")
+            return
+        selected_day = day_header.text().strip()
+        
+        # Получаем текущий номер недели из фильтра
+        week_text = self.week_var.currentText()
+        try:
+            selected_week = int(week_text.split()[1]) if "Неделя" in week_text else 1
+        except (ValueError, IndexError):
+            selected_week = 1
+        
+        # Фильтруем DataFrame, чтобы найти конкретное занятие
+        target_lesson = self.schedule[
+            (self.schedule['week'] == selected_week) &
+            (self.schedule['day'] == selected_day) &
+            (self.schedule['time'] == time_slot) &
+            (self.schedule['status'] == 'подтверждено')
+        ]
+        if target_lesson.empty:
+            QMessageBox.information(self, "Информация", "Выбранное занятие не найдено в расписании")
+            return
+        
+        # Подтверждение редактирования
+        lesson_info = target_lesson.iloc[0]
+        confirm_text = (
+            f"Вы уверены, что хотите отредактировать это занятие?\n"
+            f"Предмет: {lesson_info['subject_name']}\n"
+            f"Группа: {lesson_info['group_name']}\n"
+            f"Преподаватель: {lesson_info['teacher_name']}\n"
+            f"Аудитория: {lesson_info['classroom_name']}\n"
+            f"День: {selected_day}\n"
+            f"Время: {time_slot}\n"
+            f"Неделя: {selected_week}"
+        )
+        if QMessageBox.question(self, "Подтверждение редактирования", confirm_text) != QMessageBox.Yes:
+            return
+        
+        # Открываем диалог редактирования (в этом примере просто показываем сообщение)
+        # Здесь должен быть вызов диалогового окна для редактирования данных
+        QMessageBox.information(self, "Информация", "Функция редактирования занятия пока не реализована.")
+        
     def delete_lesson(self):
-        selected_items = self.schedule_tree.selectedItems()
-        if not selected_items:
+        """Удаляет выбранное занятие из расписания."""
+        selected_indexes = self.schedule_view.selectionModel().selectedIndexes()
+        if not selected_indexes:
             QMessageBox.information(self, "Информация", "Выберите занятие в таблице для удаления")
             return
 
-        # Аналогично, удаление требует точной идентификации занятия.
-        QMessageBox.information(self, "Информация", "Удаление занятия пока не реализовано в Qt-версии.")
+        # Получаем индекс выбранной ячейки
+        selected_index = selected_indexes[0]
+        row = selected_index.row()
+        col = selected_index.column()
 
-    # --- Замены ---
+        # Первый столбец (0) - это время. Если выбран он, то удалять нечего.
+        if col == 0:
+            QMessageBox.warning(self, "Предупреждение", "Выберите ячейку с занятием (не время)")
+            return
+
+        # ПОЛУЧАЕМ СОДЕРЖИМОЕ ВЫБРАННОЙ ЯЧЕЙКИ
+        cell_data = self.schedule_proxy_model.data(selected_index)
+        if not cell_data or not cell_data.strip():
+            QMessageBox.warning(self, "Предупреждение", "Выбранная ячейка пуста. Нет занятия для удаления.")
+            return
+
+        # Получаем время из первого столбца той же строки через прокси-модель
+        time_index = self.schedule_proxy_model.index(row, 0)
+        time_slot = self.schedule_proxy_model.data(time_index)
+        if not time_slot:
+            QMessageBox.warning(self, "Ошибка", "Не удалось определить время занятия")
+            return
+
+        # >>> ИСПРАВЛЕНО: Получаем заголовок дня недели из модели <<<
+        day_header = self.schedule_proxy_model.headerData(col, Qt.Horizontal, Qt.DisplayRole)
+        if not day_header:
+            QMessageBox.warning(self, "Ошибка", "Не удалось определить день недели")
+            return
+        selected_day = day_header.strip()
+
+        # Получаем текущий номер недели из фильтра
+        week_text = self.week_var.currentText()
+        try:
+            selected_week = int(week_text.split()[1]) if "Неделя" in week_text else 1
+        except (ValueError, IndexError):
+            selected_week = 1
+
+        # Фильтруем DataFrame, чтобы найти конкретное занятие
+        target_lesson = self.schedule[
+            (self.schedule['week'] == selected_week) &
+            (self.schedule['day'] == selected_day) &
+            (self.schedule['time'] == time_slot) &
+            (self.schedule['status'] == 'подтверждено')
+        ]
+        if target_lesson.empty:
+            QMessageBox.information(self, "Информация", "Выбранное занятие не найдено в расписании")
+            return
+
+        # Подтверждение удаления
+        lesson_info = target_lesson.iloc[0]
+        confirm_text = (
+            f"Вы уверены, что хотите удалить это занятие?\n"
+            f"Предмет: {lesson_info['subject_name']}\n"
+            f"Группа: {lesson_info['group_name']}\n"
+            f"Преподаватель: {lesson_info['teacher_name']}\n"
+            f"Аудитория: {lesson_info['classroom_name']}\n"
+            f"День: {selected_day}\n"
+            f"Время: {time_slot}\n"
+            f"Неделя: {selected_week}"
+        )
+        if QMessageBox.question(self, "Подтверждение удаления", confirm_text) != QMessageBox.Yes:
+            return
+
+        # Удаляем занятие: сбрасываем все данные и устанавливаем статус 'свободно'
+        idx = target_lesson.index[0]
+        self.schedule.loc[idx, ['subject_id', 'subject_name', 'teacher_id', 'teacher_name', 'classroom_id', 'classroom_name']] = [None, '', None, '', None, '']
+        self.schedule.loc[idx, 'status'] = 'свободно'
+        # Обновляем отображение таблицы и отчеты
+        self.filter_schedule()
+        self.update_reports()
+        self.create_backup()
+        QMessageBox.information(self, "Успех", "Занятие успешно удалено!")
+    
     def substitute_lesson(self):
-        selected_items = self.schedule_tree.selectedItems()
-        if not selected_items:
+        """Заменяет выбранное занятие."""
+        selected_indexes = self.schedule_view.selectionModel().selectedIndexes()
+        if not selected_indexes:
             QMessageBox.information(self, "Информация", "Выберите занятие в таблице для замены")
             return
 
+        # Получаем индекс выбранной ячейки
+        selected_index = selected_indexes[0]
+        row = selected_index.row()
+        col = selected_index.column()
+
+        # Первый столбец (0) - это время. Если выбран он, то заменять нечего.
+        if col == 0:
+            QMessageBox.warning(self, "Предупреждение", "Выберите ячейку с занятием (не время)")
+            return
+
+        # Получаем время из первого столбца той же строки через прокси-модель
+        time_index = self.schedule_proxy_model.index(row, 0)
+        time_slot = self.schedule_proxy_model.data(time_index)
+        if not time_slot:
+            QMessageBox.warning(self, "Ошибка", "Не удалось определить время занятия")
+            return
+
+        # Получаем день недели из заголовка столбца
+        day_header = self.schedule_view.horizontalHeaderItem(col)
+        if not day_header:
+            QMessageBox.warning(self, "Ошибка", "Не удалось определить день недели")
+            return
+        selected_day = day_header.text().strip()
+
+        # Получаем текущий номер недели из фильтра
+        week_text = self.week_var.currentText()
+        try:
+            selected_week = int(week_text.split()[1]) if "Неделя" in week_text else 1
+        except (ValueError, IndexError):
+            selected_week = 1
+
+        # Фильтруем DataFrame, чтобы найти конкретное занятие
+        target_lesson = self.schedule[
+            (self.schedule['week'] == selected_week) &
+            (self.schedule['day'] == selected_day) &
+            (self.schedule['time'] == time_slot) &
+            (self.schedule['status'] == 'подтверждено')
+        ]
+
+        if target_lesson.empty:
+            QMessageBox.information(self, "Информация", "Выбранное занятие не найдено в расписании")
+            return
+
+        # Получаем информацию о занятии
+        lesson_info = target_lesson.iloc[0]
+
+        # Создаем диалоговое окно для выбора нового преподавателя
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Замена занятия")
+        dialog.setModal(True)
+        dialog.resize(400, 200)
+        layout = QVBoxLayout(dialog)
+
+        info_label = QLabel(f"Замена для:\n{lesson_info['subject_name']}\nГруппа: {lesson_info['group_name']}\nДень: {selected_day}\nВремя: {time_slot}")
+        info_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(info_label)
+
+        teacher_label = QLabel("Новый преподаватель:")
+        layout.addWidget(teacher_label)
+
+        teacher_combo = QComboBox()
+        # Добавляем всех преподавателей, которые ведут этот предмет
+        available_teachers = [t for t in self.teachers if lesson_info['subject_name'] in t['subjects']]
+        teacher_names = [t['name'] for t in available_teachers]
+        teacher_combo.addItems(teacher_names)
+        layout.addWidget(teacher_combo)
+
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        button_box.accepted.connect(dialog.accept)
+        button_box.rejected.connect(dialog.reject)
+        layout.addWidget(button_box)
+
+        if dialog.exec_() == QDialog.Accepted:
+            new_teacher_name = teacher_combo.currentText()
+            new_teacher = next((t for t in available_teachers if t['name'] == new_teacher_name), None)
+
+            if new_teacher:
+                # Обновляем данные в DataFrame
+                idx = target_lesson.index[0]
+                self.schedule.loc[idx, 'teacher_id'] = new_teacher['id']
+                self.schedule.loc[idx, 'teacher_name'] = new_teacher['name']
+
+                # Добавляем запись в журнал замен (если он реализован)
+                self.substitutions.append({
+                    'date': datetime.now().isoformat(),
+                    'week': selected_week,
+                    'day': selected_day,
+                    'time': time_slot,
+                    'group': lesson_info['group_name'],
+                    'subject': lesson_info['subject_name'],
+                    'old_teacher': lesson_info['teacher_name'],
+                    'new_teacher': new_teacher_name
+                })
+
+                # Обновляем отображение таблицы и отчеты
+                self.filter_schedule()
+                self.update_reports()
+                self.create_backup()
+
+                QMessageBox.information(self, "Успех", f"Занятие успешно заменено!\nНовый преподаватель: {new_teacher_name}")
+            else:
+                QMessageBox.warning(self, "Ошибка", "Не удалось найти выбранного преподавателя")
+
+        # В упрощенной версии мы не можем точно определить день и неделю из одной ячейки.
+        # Поэтому показываем сообщение.
+        # QMessageBox.information(self, "Информация", "Замена занятия пока не реализована в Qt-версии.")
+        
+    # --- Замены ---
+    def substitute_lesson(self):
+        selected_items = self.schedule_view.selectionModel().selectedIndexes()
+        if not selected_items:
+            QMessageBox.information(self, "Информация", "Выберите занятие в таблице для замены")
+            return
         # Получаем данные из строки таблицы
         row = selected_items[0].row()
-        time_slot = self.schedule_tree.item(row, 0).text()
+        time_slot = self.schedule_proxy_model.data(self.schedule_proxy_model.index(row, 0))
         # В упрощенной версии мы не можем точно определить день и неделю из одной ячейки.
         # Поэтому показываем сообщение.
         QMessageBox.information(self, "Информация", "Замена занятия пока не реализована в Qt-версии.")
-
     # --- Календарь ---
     def show_calendar(self):
         dialog = QDialog(self)
         dialog.setWindowTitle("Календарь расписания")
         dialog.setModal(True)
         dialog.resize(600, 500)
-
         layout = QVBoxLayout(dialog)
         calendar = QCalendarWidget()
         layout.addWidget(calendar)
-
         button_box = QDialogButtonBox(QDialogButtonBox.Ok)
         button_box.accepted.connect(dialog.accept)
         layout.addWidget(button_box)
-
         dialog.exec_()
-
     # --- Проверка конфликтов ---
     def check_conflicts(self):
         if self.schedule.empty:
             QMessageBox.information(self, "Информация", "Сначала сгенерируйте расписание")
             return
-
         teacher_conflicts = pd.DataFrame()
         classroom_conflicts = pd.DataFrame()
         group_conflicts = pd.DataFrame()
-
         if 'teacher_id' in self.schedule.columns:
             teacher_conflicts = self.schedule[
                 (self.schedule['status'] == 'подтверждено') &
                 (self.schedule.duplicated(['teacher_id', 'day', 'time', 'week'], keep=False))
             ]
-
         if 'classroom_id' in self.schedule.columns:
             classroom_conflicts = self.schedule[
                 (self.schedule['status'] == 'подтверждено') &
                 (self.schedule.duplicated(['classroom_id', 'day', 'time', 'week'], keep=False))
             ]
-
         if 'group_id' in self.schedule.columns:
             group_conflicts = self.schedule[
                 (self.schedule['status'] == 'подтверждено') &
                 (self.schedule.duplicated(['group_id', 'day', 'time', 'week'], keep=False))
             ]
-
         conflict_text = f"Конфликты преподавателей: {len(teacher_conflicts)}\n"
         conflict_text += f"Конфликты аудиторий: {len(classroom_conflicts)}\n"
         conflict_text += f"Конфликты групп: {len(group_conflicts)}\n"
-
         if not teacher_conflicts.empty:
             conflict_text += "Конфликты преподавателей:\n"
             for _, conflict in teacher_conflicts.head(10).iterrows():
                 conflict_text += f"  {conflict['teacher_name']} - {conflict['day']} {conflict['time']} (неделя {conflict['week']})\n"
-
         if not classroom_conflicts.empty:
             conflict_text += "\nКонфликты аудиторий:\n"
             for _, conflict in classroom_conflicts.head(10).iterrows():
                 conflict_text += f"  {conflict['classroom_name']} - {conflict['day']} {conflict['time']} (неделя {conflict['week']})\n"
-
         if not group_conflicts.empty:
             conflict_text += "\nКонфликты групп:\n"
             for _, conflict in group_conflicts.head(10).iterrows():
                 conflict_text += f"  {conflict['group_name']} - {conflict['day']} {conflict['time']} (неделя {conflict['week']})\n"
-
         self.conflicts_text.setText(conflict_text)
         QMessageBox.information(self, "Проверка конфликтов", f"Найдено конфликтов:\nПреподавателей: {len(teacher_conflicts)}\nАудиторий: {len(classroom_conflicts)}\nГрупп: {len(group_conflicts)}")
-
     # --- Оптимизация ---
     def optimize_schedule(self):
         if self.schedule.empty:
             QMessageBox.information(self, "Информация", "Сначала сгенерируйте расписание")
             return
-
         self.progress.show()
         self.statusBar.showMessage("Оптимизация расписания...")
-
         conflicts = pd.DataFrame()
         if 'teacher_id' in self.schedule.columns:
             conflicts = self.schedule[
                 (self.schedule['status'] == 'подтверждено') &
                 (self.schedule.duplicated(['teacher_id', 'day', 'time', 'week'], keep=False))
             ]
-
         optimized_count = 0
         for idx in conflicts.index[:10]:
             group_id = self.schedule.loc[idx, 'group_id']
@@ -1673,24 +1757,20 @@ class ScheduleApp(QMainWindow):
                 self.schedule.loc[idx, ['subject_id', 'subject_name', 'teacher_id', 'teacher_name', 'classroom_id', 'classroom_name']] = [None, '', None, '', None, '']
                 self.schedule.loc[idx, 'status'] = 'свободно'
                 optimized_count += 1
-
         self.progress.hide()
         self.statusBar.showMessage("Оптимизация завершена")
         QMessageBox.information(self, "Оптимизация", f"Оптимизировано {optimized_count} занятий")
         self.filter_schedule()
         self.update_reports()
         self.create_backup()
-
     # --- Отчеты ---
     def update_reports(self):
         if self.schedule.empty:
             return
-
         # Очистка таблиц
         self.teacher_report_tree.setRowCount(0)
         self.group_report_tree.setRowCount(0)
         self.summary_text.clear()
-
         # Нагрузка преподавателей
         if 'teacher_name' in self.schedule.columns and not self.schedule[self.schedule['status'] == 'подтверждено'].empty:
             teacher_load = self.schedule[self.schedule['status'] == 'подтверждено'].groupby('teacher_name').size()
@@ -1707,7 +1787,6 @@ class ScheduleApp(QMainWindow):
                 self.teacher_report_tree.setItem(row, 1, QTableWidgetItem(str(hours)))
                 self.teacher_report_tree.setItem(row, 2, QTableWidgetItem(groups))
                 self.teacher_report_tree.setItem(row, 3, QTableWidgetItem(subjects))
-
         # Нагрузка групп
         if 'group_name' in self.schedule.columns and not self.schedule[self.schedule['status'] == 'подтверждено'].empty:
             group_load = self.schedule[self.schedule['status'] == 'подтверждено'].groupby('group_name').size()
@@ -1724,7 +1803,6 @@ class ScheduleApp(QMainWindow):
                 self.group_report_tree.setItem(row, 1, QTableWidgetItem(str(hours)))
                 self.group_report_tree.setItem(row, 2, QTableWidgetItem(subjects))
                 self.group_report_tree.setItem(row, 3, QTableWidgetItem(teachers))
-
         # Сводный отчет
         summary_text = f"📊 Сводный отчет по расписанию\n"
         summary_text += f"Учреждение: {self.settings.get('school_name', 'Не указано')}\n"
@@ -1746,24 +1824,19 @@ class ScheduleApp(QMainWindow):
             summary_text += f"✅ Подтвержденных занятий: {confirmed_lessons}\n"
             summary_text += f"📝 Запланированных занятий: {planned_lessons}\n"
             summary_text += f"🕒 Свободных слотов: {free_slots}\n"
-
         self.summary_text.setText(summary_text)
-
     def show_reports(self):
         # Переключаемся на вкладку отчетов
         self.notebook.setCurrentIndex(5) # Индекс вкладки "Отчеты"
         self.update_reports()
-
     # --- Экспорт ---
     def export_to_excel(self):
         if self.schedule.empty:
             QMessageBox.information(self, "Информация", "Сначала сгенерируйте расписание")
             return
-
         filename, _ = QFileDialog.getSaveFileName(self, "Сохранить расписание как", "", "Excel files (*.xlsx);;All files (*.*)")
         if not filename:
             return
-
         try:
             with pd.ExcelWriter(filename, engine='openpyxl') as writer:
                 if not self.schedule.empty:
@@ -1777,13 +1850,11 @@ class ScheduleApp(QMainWindow):
                                         'subject_id', 'subject_name', 'teacher_id', 'teacher_name',
                                         'classroom_id', 'classroom_name', 'status']).to_excel(
                         writer, sheet_name='Расписание', index=False)
-
                 pd.DataFrame(self.groups).to_excel(writer, sheet_name='Группы', index=False)
                 pd.DataFrame(self.teachers).to_excel(writer, sheet_name='Преподаватели', index=False)
                 pd.DataFrame(self.classrooms).to_excel(writer, sheet_name='Аудитории', index=False)
                 pd.DataFrame(self.subjects).to_excel(writer, sheet_name='Предметы', index=False)
                 pd.DataFrame(self.holidays).to_excel(writer, sheet_name='Праздники', index=False)
-
                 if not self.schedule.empty and not self.schedule[self.schedule['status'] == 'подтверждено'].empty:
                     teacher_report = self.schedule[self.schedule['status'] == 'подтверждено'].groupby('teacher_name').agg({
                         'group_name': lambda x: ', '.join(x.unique()),
@@ -1792,7 +1863,6 @@ class ScheduleApp(QMainWindow):
                     teacher_report.columns = ['Преподаватель', 'Группы', 'Предметы']
                     teacher_report['Часы'] = self.schedule[self.schedule['status'] == 'подтверждено'].groupby('teacher_name').size().values
                     teacher_report.to_excel(writer, sheet_name='Нагрузка преподавателей', index=False)
-
                     group_report = self.schedule[self.schedule['status'] == 'подтверждено'].groupby('group_name').agg({
                         'teacher_name': lambda x: ', '.join(x.unique()),
                         'subject_name': lambda x: ', '.join(x.unique())
@@ -1800,30 +1870,24 @@ class ScheduleApp(QMainWindow):
                     group_report.columns = ['Группа', 'Преподаватели', 'Предметы']
                     group_report['Часы'] = self.schedule[self.schedule['status'] == 'подтверждено'].groupby('group_name').size().values
                     group_report.to_excel(writer, sheet_name='Нагрузка групп', index=False)
-
             QMessageBox.information(self, "Экспорт", f"Расписание успешно экспортировано в {filename}")
             self.create_backup()
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Ошибка экспорта: {str(e)}")
-
     def export_to_html(self):
         if self.schedule.empty:
             QMessageBox.information(self, "Информация", "Сначала сгенерируйте расписание")
             return
-
         filename, _ = QFileDialog.getSaveFileName(self, "Сохранить расписание как HTML", "", "HTML files (*.html);;All files (*.*)")
         if not filename:
             return
-
         try:
             confirmed_schedule = self.schedule[self.schedule['status'] == 'подтверждено']
             if confirmed_schedule.empty:
                 QMessageBox.warning(self, "Предупреждение", "Нет подтвержденных занятий для экспорта")
                 return
-
             unique_groups = confirmed_schedule['group_name'].unique()
             unique_groups.sort()
-
             html_content = f"""
 <!DOCTYPE html>
 <html lang="ru">
@@ -1949,7 +2013,6 @@ class ScheduleApp(QMainWindow):
     </div>
     <div class="schedule-container">
 """
-
             for group_name in unique_groups:
                 group_schedule = confirmed_schedule[confirmed_schedule['group_name'] == group_name]
                 days = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'][:self.settings['days_per_week']]
@@ -1984,7 +2047,6 @@ class ScheduleApp(QMainWindow):
             </table>
         </div>
 """
-
             html_content += f"""
     </div>
     <div class="footer">
@@ -1994,22 +2056,18 @@ class ScheduleApp(QMainWindow):
 </body>
 </html>
 """
-
             with open(filename, 'w', encoding='utf-8') as f:
                 f.write(html_content)
-
             QMessageBox.information(self, "Экспорт", f"Расписание успешно экспортировано в HTML-файл:\n{filename}")
             self.create_backup()
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Ошибка экспорта в HTML: {str(e)}")
-
     # --- Праздники ---
     def add_holiday(self):
         dialog = QDialog(self)
         dialog.setWindowTitle("Добавить праздник")
         dialog.setModal(True)
         dialog.resize(400, 200)
-
         form_layout = QFormLayout(dialog)
         date_entry = QDateEdit()
         date_entry.setCalendarPopup(True)
@@ -2017,18 +2075,14 @@ class ScheduleApp(QMainWindow):
         name_entry = QLineEdit()
         type_combo = QComboBox()
         type_combo.addItems(["Государственный", "Учебный", "Каникулы"])
-
         form_layout.addRow("Дата:", date_entry)
         form_layout.addRow("Название:", name_entry)
         form_layout.addRow("Тип:", type_combo)
-
         button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         button_box.accepted.connect(lambda: self._save_holiday(date_entry.date().toString("yyyy-MM-dd"), name_entry.text(), type_combo.currentText(), dialog))
         button_box.rejected.connect(dialog.reject)
         form_layout.addRow(button_box)
-
         dialog.exec_()
-
     def _save_holiday(self, date_str, name, holiday_type, dialog):
         if not date_str or not name:
             QMessageBox.warning(self, "Предупреждение", "Заполните все поля")
@@ -2045,13 +2099,11 @@ class ScheduleApp(QMainWindow):
             dialog.accept()
         except ValueError:
             QMessageBox.critical(self, "Ошибка", "Неверный формат даты. Используйте ГГГГ-ММ-ДД")
-
     def delete_holiday(self):
         selected_items = self.holidays_tree.selectedItems()
         if not selected_items:
             QMessageBox.information(self, "Информация", "Выберите праздник для удаления")
             return
-
         if QMessageBox.question(self, "Подтверждение", "Удалить выбранный праздник?") == QMessageBox.Yes:
             row = selected_items[0].row()
             holiday_date = self.holidays_tree.item(row, 0).text()
@@ -2059,19 +2111,16 @@ class ScheduleApp(QMainWindow):
             self.holidays = [h for h in self.holidays if not (h['date'] == holiday_date and h['name'] == holiday_name)]
             self.load_holidays_data()
             self.create_backup()
-
     # --- Архив расписаний ---
     def save_current_schedule(self):
         if self.schedule.empty:
             QMessageBox.warning(self, "Предупреждение", "Нет расписания для сохранения. Сначала сгенерируйте его.")
             return
-
         school_name = self.settings.get('school_name', 'Расписание').replace(" ", "_")
         academic_year = self.settings.get('academic_year', 'Год_не_указан').replace("/", "_")
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"{school_name}_{academic_year}_{timestamp}.json"
         filepath = os.path.join(self.archive_dir, filename)
-
         try:
             schedule_dict = self.schedule.to_dict(orient='records') if not self.schedule.empty else []
             archive_data = {
@@ -2092,7 +2141,6 @@ class ScheduleApp(QMainWindow):
             self.create_backup()
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Ошибка сохранения расписания в архив: {str(e)}")
-
     def load_archive_list(self):
         self.archive_tree.setRowCount(0)
         try:
@@ -2132,17 +2180,14 @@ class ScheduleApp(QMainWindow):
                     self.archive_tree.setItem(row, 6, QTableWidgetItem("Ошибка"))
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Ошибка загрузки списка архива: {e}")
-
     def load_archived_schedule(self):
         selected_items = self.archive_tree.selectedItems()
         if not selected_items:
             QMessageBox.information(self, "Информация", "Выберите расписание для загрузки")
             return
-
         row = selected_items[0].row()
         filename = self.archive_tree.item(row, 0).text()
         filepath = os.path.join(self.archive_dir, filename)
-
         if QMessageBox.question(self, "Подтверждение", f"Вы уверены, что хотите загрузить расписание из файла {filename}?\nТекущие данные будут заменены.") == QMessageBox.Yes:
             try:
                 with open(filepath, 'r', encoding='utf-8') as f:
@@ -2170,17 +2215,14 @@ class ScheduleApp(QMainWindow):
                 self.create_backup()
             except Exception as e:
                 QMessageBox.critical(self, "Ошибка", f"Ошибка загрузки расписания: {str(e)}")
-
     def delete_archived_schedule(self):
         selected_items = self.archive_tree.selectedItems()
         if not selected_items:
             QMessageBox.information(self, "Информация", "Выберите расписание для удаления")
             return
-
         row = selected_items[0].row()
         filename = self.archive_tree.item(row, 0).text()
         filepath = os.path.join(self.archive_dir, filename)
-
         if QMessageBox.question(self, "Подтверждение", f"Вы уверены, что хотите удалить файл {filename}?") == QMessageBox.Yes:
             try:
                 os.remove(filepath)
@@ -2188,21 +2230,17 @@ class ScheduleApp(QMainWindow):
                 QMessageBox.information(self, "Успех", f"Расписание {filename} успешно удалено из архива")
             except Exception as e:
                 QMessageBox.critical(self, "Ошибка", f"Ошибка удаления: {str(e)}")
-
     def export_archived_schedule(self):
         selected_items = self.archive_tree.selectedItems()
         if not selected_items:
             QMessageBox.information(self, "Информация", "Выберите расписание для экспорта")
             return
-
         row = selected_items[0].row()
         filename = self.archive_tree.item(row, 0).text()
         filepath = os.path.join(self.archive_dir, filename)
-
         save_path, _ = QFileDialog.getSaveFileName(self, f"Экспорт расписания {filename}", "", "Excel files (*.xlsx);;All files (*.*)")
         if not save_path:
             return
-
         try:
             with open(filepath, 'r', encoding='utf-8') as f:
                 data = json.load(f)
@@ -2240,19 +2278,16 @@ class ScheduleApp(QMainWindow):
             QMessageBox.information(self, "Экспорт", f"Расписание успешно экспортировано в {save_path}")
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Ошибка экспорта: {str(e)}")
-
     # --- Настройки ---
     def open_settings(self):
         dialog = QDialog(self)
         dialog.setWindowTitle("Настройки приложения")
         dialog.setModal(True)
         dialog.resize(550, 700)
-
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_content = QWidget()
         scroll_layout = QVBoxLayout(scroll_content)
-
         # Основные настройки
         basic_frame = QGroupBox("Основные настройки")
         basic_layout = QFormLayout(basic_frame)
@@ -2265,7 +2300,6 @@ class ScheduleApp(QMainWindow):
         basic_layout.addRow("Учебный год:", academic_year_var)
         basic_layout.addRow("Дата начала года:", start_date_var)
         scroll_layout.addWidget(basic_frame)
-
         # Параметры расписания
         schedule_frame = QGroupBox("Параметры расписания")
         schedule_layout = QFormLayout(schedule_frame)
@@ -2282,7 +2316,6 @@ class ScheduleApp(QMainWindow):
         schedule_layout.addRow("Занятий в день:", lessons_per_day_var)
         schedule_layout.addRow("Недель:", weeks_var)
         scroll_layout.addWidget(schedule_frame)
-
         # Расписание звонков
         bell_frame = QGroupBox("Расписание звонков")
         bell_layout = QFormLayout(bell_frame)
@@ -2293,7 +2326,6 @@ class ScheduleApp(QMainWindow):
         bell_layout.addRow(open_editor_btn)
         bell_layout.addRow(QLabel("Редактор расписания звонков", font=QFont('Segoe UI', 9, QFont.StyleItalic)))
         scroll_layout.addWidget(bell_frame)
-
         # Настройки авто-бэкапа
         backup_frame = QGroupBox("Настройки авто-бэкапа")
         backup_layout = QFormLayout(backup_frame)
@@ -2309,11 +2341,9 @@ class ScheduleApp(QMainWindow):
         backup_layout.addRow("Интервал бэкапа (мин):", backup_interval_var)
         backup_layout.addRow("Макс. бэкапов:", max_backups_var)
         scroll_layout.addWidget(backup_frame)
-
         scroll_area.setWidget(scroll_content)
         main_layout = QVBoxLayout(dialog)
         main_layout.addWidget(scroll_area)
-
         button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         button_box.accepted.connect(lambda: self._save_settings(
             school_name_var.text(), director_var.text(), academic_year_var.text(), start_date_var.text(),
@@ -2322,18 +2352,14 @@ class ScheduleApp(QMainWindow):
             bell_schedule_var.text(), dialog))
         button_box.rejected.connect(dialog.reject)
         main_layout.addWidget(button_box)
-
         # Подключаем кнопку редактора звонков
         def open_editor_wrapper():
             current_schedule = bell_schedule_var.text()
             editor = BellScheduleEditor(dialog, current_schedule)
             if editor.exec_() == QDialog.Accepted and editor.result is not None:
                 bell_schedule_var.setText(editor.result)
-
         open_editor_btn.clicked.connect(open_editor_wrapper)
-
         dialog.exec_()
-
     def _save_settings(self, school_name, director, academic_year, start_date,
                       days_per_week, lessons_per_day, weeks,
                       auto_backup, backup_interval, max_backups,
@@ -2355,30 +2381,25 @@ class ScheduleApp(QMainWindow):
         self.restart_auto_backup()
         self.update_backup_indicator()
         dialog.accept()
-
     # --- Бэкапы ---
     def open_backup_manager(self):
         dialog = QDialog(self)
         dialog.setWindowTitle("Менеджер бэкапов")
         dialog.setModal(True)
         dialog.resize(600, 400)
-
         layout = QVBoxLayout(dialog)
         label = QLabel("🛡️ Менеджер бэкапов")
         label.setFont(QFont('Arial', 14, QFont.Bold))
         label.setAlignment(Qt.AlignCenter)
         layout.addWidget(label)
-
         self.backup_tree = QTableWidget(0, 3)
         self.backup_tree.setHorizontalHeaderLabels(['Имя файла', 'Дата создания', 'Размер'])
         self.backup_tree.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.backup_tree.setSelectionBehavior(QAbstractItemView.SelectRows)
         layout.addWidget(self.backup_tree, 1)
-
         # Контекстное меню
         self.backup_tree.setContextMenuPolicy(Qt.CustomContextMenu)
         self.backup_tree.customContextMenuRequested.connect(self.show_backup_context_menu)
-
         button_frame = QFrame()
         button_layout = QHBoxLayout(button_frame)
         refresh_btn = QPushButton("🔄 Обновить")
@@ -2395,10 +2416,8 @@ class ScheduleApp(QMainWindow):
         button_layout.addWidget(delete_btn)
         button_layout.addStretch()
         layout.addWidget(button_frame)
-
         self.load_backup_list()
         dialog.exec_()
-
     def show_backup_context_menu(self, position):
         menu = QMenu()
         restore_action = QAction("📂 Восстановить", self)
@@ -2408,7 +2427,6 @@ class ScheduleApp(QMainWindow):
         menu.addAction(delete_action)
         menu.addSeparator()
         menu.addAction(refresh_action)
-
         action = menu.exec_(self.backup_tree.mapToGlobal(position))
         if action == restore_action:
             self.restore_backup()
@@ -2416,7 +2434,6 @@ class ScheduleApp(QMainWindow):
             self.delete_backup()
         elif action == refresh_action:
             self.load_backup_list()
-
     def load_backup_list(self):
         self.backup_tree.setRowCount(0)
         try:
@@ -2440,17 +2457,14 @@ class ScheduleApp(QMainWindow):
                 self.backup_tree.setItem(row, 2, QTableWidgetItem(size_str))
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Ошибка загрузки списка бэкапов: {e}")
-
     def restore_backup(self):
         selected_items = self.backup_tree.selectedItems()
         if not selected_items:
             QMessageBox.information(self, "Информация", "Выберите бэкап для восстановления")
             return
-
         row = selected_items[0].row()
         filename = self.backup_tree.item(row, 0).text()
         filepath = os.path.join(self.backup_dir, filename)
-
         if QMessageBox.question(self, "Подтверждение", f"Вы уверены, что хотите восстановить данные из {filename}?\nТекущие данные будут потеряны.") == QMessageBox.Yes:
             try:
                 with zipfile.ZipFile(filepath, 'r') as zip_ref:
@@ -2459,17 +2473,14 @@ class ScheduleApp(QMainWindow):
                 self.load_data()
             except Exception as e:
                 QMessageBox.critical(self, "Ошибка", f"Ошибка восстановления: {e}")
-
     def delete_backup(self):
         selected_items = self.backup_tree.selectedItems()
         if not selected_items:
             QMessageBox.information(self, "Информация", "Выберите бэкап для удаления")
             return
-
         row = selected_items[0].row()
         filename = self.backup_tree.item(row, 0).text()
         filepath = os.path.join(self.backup_dir, filename)
-
         if QMessageBox.question(self, "Подтверждение", f"Вы уверены, что хотите удалить {filename}?") == QMessageBox.Yes:
             try:
                 os.remove(filepath)
@@ -2477,7 +2488,6 @@ class ScheduleApp(QMainWindow):
                 QMessageBox.information(self, "Успех", f"Бэкап {filename} успешно удален")
             except Exception as e:
                 QMessageBox.critical(self, "Ошибка", f"Ошибка удаления: {e}")
-
     def create_backup(self):
         try:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -2504,7 +2514,6 @@ class ScheduleApp(QMainWindow):
             self.update_backup_indicator()
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Ошибка создания бэкапа: {str(e)}")
-
     def cleanup_old_backups(self):
         try:
             backup_files = [f for f in os.listdir(self.backup_dir) if f.endswith('.zip')]
@@ -2514,22 +2523,18 @@ class ScheduleApp(QMainWindow):
                 os.remove(os.path.join(self.backup_dir, oldest_file))
         except Exception as e:
             pass
-
     def start_auto_backup(self):
         if self.settings.get('auto_backup', True):
             interval = self.settings.get('backup_interval', 30) * 60 * 1000
             self.backup_timer = QTimer()
             self.backup_timer.timeout.connect(self.auto_backup)
             self.backup_timer.start(interval)
-
     def auto_backup(self):
         self.create_backup()
-
     def restart_auto_backup(self):
         if self.backup_timer:
             self.backup_timer.stop()
         self.start_auto_backup()
-
     def update_backup_indicator(self):
         if self.settings.get('auto_backup', True):
             self.backup_status_label.setText("Авто-бэкап: ВКЛ")
@@ -2544,7 +2549,6 @@ class ScheduleApp(QMainWindow):
             self.backup_status_label.setText("Авто-бэкап: ВЫКЛ")
             self.backup_status_label.setStyleSheet(f"color: {COLORS['danger']};")
             self.backup_info_label.setText("")
-
     # --- Прочее ---
     def check_and_update_experience(self):
         current_year = datetime.now().year
@@ -2555,13 +2559,11 @@ class ScheduleApp(QMainWindow):
             self.settings['last_academic_year_update'] = current_year
             self.load_teachers_data()
             self.create_backup()
-
     def find_free_slot(self):
         dialog = QDialog(self)
         dialog.setWindowTitle("Найти свободное время")
         dialog.setModal(True)
         dialog.resize(400, 250)
-
         layout = QVBoxLayout(dialog)
         search_type_var = QComboBox()
         search_type_var.addItems(["Группа", "Преподаватель", "Аудитория"])
@@ -2570,7 +2572,6 @@ class ScheduleApp(QMainWindow):
         layout.addWidget(search_type_var)
         layout.addWidget(QLabel("Выберите элемент:"))
         layout.addWidget(element_var)
-
         def update_combo():
             search_type = search_type_var.currentText()
             if search_type == "Группа":
@@ -2581,10 +2582,8 @@ class ScheduleApp(QMainWindow):
                 values = [c['name'] for c in self.classrooms]
             element_var.clear()
             element_var.addItems(values)
-
         search_type_var.currentIndexChanged.connect(update_combo)
         update_combo()
-
         def search_slot():
             search_type = search_type_var.currentText()
             element_name = element_var.currentText()
@@ -2603,43 +2602,35 @@ class ScheduleApp(QMainWindow):
                 QMessageBox.information(self, "Свободный слот", f"Ближайший свободный слот:\nНеделя: {first_slot['week']}\nДень: {first_slot['day']}\nВремя: {first_slot['time']}\nГруппа: {first_slot['group_name']}")
             else:
                 QMessageBox.information(self, "Информация", "Свободных слотов не найдено")
-
         search_btn = QPushButton("Найти")
         search_btn.clicked.connect(search_slot)
         layout.addWidget(search_btn)
-
         dialog.exec_()
-
     def show_about(self):
         dialog = QDialog(self)
         dialog.setWindowTitle("О программе")
         dialog.setModal(True)
         dialog.setFixedSize(605, 650)
         dialog.setWindowFlags(dialog.windowFlags() & ~Qt.WindowContextHelpButtonHint)
-
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_content = QWidget()
         scroll_layout = QVBoxLayout(scroll_content)
-
         # Логотип
         logo_label = QLabel("🎓")
         logo_label.setFont(QFont('Arial', 48, QFont.Bold))
         logo_label.setAlignment(Qt.AlignCenter)
         scroll_layout.addWidget(logo_label)
-
         # Название
         title_label = QLabel("Система автоматического составления расписания")
         title_label.setFont(QFont('Arial', 16, QFont.Bold))
         title_label.setAlignment(Qt.AlignCenter)
         scroll_layout.addWidget(title_label)
-
         # Версия
         version_label = QLabel("Версия 2.0")
         version_label.setFont(QFont('Arial', 11, QFont.Bold))
         version_label.setAlignment(Qt.AlignCenter)
         scroll_layout.addWidget(version_label)
-
         # Описание
         description_text = (
             "Это профессиональное приложение предназначено для автоматизации и управления\n"
@@ -2652,13 +2643,11 @@ class ScheduleApp(QMainWindow):
         desc_label.setWordWrap(True)
         desc_label.setAlignment(Qt.AlignLeft)
         scroll_layout.addWidget(desc_label)
-
         # Основные возможности
         features_title = QLabel("🔑 Основные возможности:")
         features_title.setFont(QFont('Arial', 12, QFont.Bold))
         features_title.setAlignment(Qt.AlignLeft)
         scroll_layout.addWidget(features_title)
-
         features_text = (
             "• 🚀 Автоматическая генерация расписания на основе заданных параметров\n"
             "• ✍️ Полный ручной контроль: добавление, редактирование и удаление занятий\n"
@@ -2676,7 +2665,6 @@ class ScheduleApp(QMainWindow):
         features_label.setWordWrap(True)
         features_label.setAlignment(Qt.AlignLeft)
         scroll_layout.addWidget(features_label)
-
         # Информация о разработчике
         dev_frame = QFrame()
         dev_layout = QVBoxLayout(dev_frame)
@@ -2686,7 +2674,6 @@ class ScheduleApp(QMainWindow):
         dev_layout.addWidget(QLabel("🌐 Официальный сайт: www.lukomsky.ru"))
         dev_layout.addWidget(QLabel("📅 Год выпуска: 2025"))
         scroll_layout.addWidget(dev_frame)
-
         # Информация об учреждении
         school_frame = QFrame()
         school_layout = QVBoxLayout(school_frame)
@@ -2695,17 +2682,13 @@ class ScheduleApp(QMainWindow):
         school_layout.addWidget(QLabel(f"Директор: {self.settings.get('director', 'Не указан')}"))
         school_layout.addWidget(QLabel(f"Учебный год: {self.settings.get('academic_year', 'Не указан')}"))
         scroll_layout.addWidget(school_frame)
-
         scroll_area.setWidget(scroll_content)
         main_layout = QVBoxLayout(dialog)
         main_layout.addWidget(scroll_area)
-
         close_button = QPushButton("Закрыть")
         close_button.clicked.connect(dialog.accept)
         main_layout.addWidget(close_button)
-
         dialog.exec_()
-
     def save_data(self):
         data = {
             'settings': self.settings,
@@ -2725,7 +2708,6 @@ class ScheduleApp(QMainWindow):
                 self.create_backup()
             except Exception as e:
                 QMessageBox.critical(self, "Ошибка", f"Ошибка сохранения: {str(e)}")
-
     def load_data(self):
         filename, _ = QFileDialog.getOpenFileName(self, "Загрузить данные", "", "JSON files (*.json);;All files (*.*)")
         if filename and os.path.exists(filename):
@@ -2748,15 +2730,12 @@ class ScheduleApp(QMainWindow):
                 self.create_backup()
             except Exception as e:
                 QMessageBox.critical(self, "Ошибка", f"Ошибка загрузки: {str(e)}")
-
     def open_substitutions(self):
         # В упрощенной версии журнал замен не реализован.
         QMessageBox.information(self, "Информация", "Журнал замен пока не реализован в Qt-версии.")
-
     # --- Запуск приложения ---
     def run(self):
         self.show()
-
 # Запуск приложения
 if __name__ == "__main__":
     app = QApplication(sys.argv)
